@@ -29,6 +29,18 @@
 #define __STDC_FORMAT_MACROS   1
 #define __STDC_CONSTANT_MACROS 1
 
+#define WRITE_OSD_VALUE 0
+#define READ_OSD_VALUE 0
+
+#if HAVE_LIBKLMONITORING_KLMONITORING_H
+#define KL_PRBS_INPUT 0
+
+#if KL_PRBS_INPUT
+#include <libklmonitoring/kl-prbs.h>
+#endif
+
+#endif
+
 extern "C"
 {
 #include "common/common.h"
@@ -38,6 +50,7 @@ extern "C"
 #include "input/sdi/ancillary.h"
 #include "input/sdi/vbi.h"
 #include "input/sdi/x86/sdi.h"
+#include "input/sdi/smpte337_detector.h"
 #include <libavresample/avresample.h>
 #include <libavutil/opt.h>
 #include <libklvanc/vanc.h>
@@ -47,6 +60,12 @@ extern "C"
 #include <assert.h>
 #include <include/DeckLinkAPI.h>
 #include "include/DeckLinkAPIDispatch.cpp"
+
+#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
+#include <libklmonitoring/klmonitoring.h>
+static struct kl_histogram frame_interval;
+static int histogram_dump = 0;
+#endif
 
 #define DECKLINK_VANC_LINES 100
 
@@ -104,6 +123,88 @@ const static struct obe_to_decklink_video video_format_tab[] =
     { -1, 0, -1, -1 },
 };
 
+#if WRITE_OSD_VALUE || READ_OSD_VALUE
+#define  y_white 0x3ff
+#define  y_black 0x000
+#define cr_white 0x200
+#define cb_white 0x200
+
+/* Six pixels */
+static uint32_t white[] = {
+	 cr_white << 20 |  y_white << 10 | cb_white,
+	  y_white << 20 | cb_white << 10 |  y_white,
+	 cb_white << 20 |  y_white << 10 | cr_white,
+	  y_white << 20 | cr_white << 10 |  y_white,
+};
+
+static uint32_t black[] = {
+	 cr_white << 20 |  y_black << 10 | cb_white,
+	  y_black << 20 | cb_white << 10 |  y_black,
+	 cb_white << 20 |  y_black << 10 | cr_white,
+	  y_black << 20 | cr_white << 10 |  y_black,
+};
+
+/* KL paint 6 pixels in a single point */
+__inline__ void V210_draw_6_pixels(uint32_t *addr, uint32_t *coloring)
+{
+	for (int i = 0; i < 5; i++) {
+		addr[0] = coloring[0];
+		addr[1] = coloring[1];
+		addr[2] = coloring[2];
+		addr[3] = coloring[3];
+		addr += 4;
+	}
+}
+
+__inline__ void V210_draw_box(uint32_t *frame_addr, uint32_t stride, int color)
+{
+	uint32_t *coloring;
+	if (color == 1)
+		coloring = white;
+	else
+		coloring = black;
+
+	for (uint32_t l = 0; l < 30; l++) {
+		uint32_t *addr = frame_addr + (l * (stride / 4));
+		V210_draw_6_pixels(addr, coloring);
+	}
+}
+
+__inline__ void V210_draw_box_at(uint32_t *frame_addr, uint32_t stride, int color, int x, int y)
+{
+	uint32_t *addr = frame_addr + (y * (stride / 4));
+	addr += ((x / 6) * 4);
+	V210_draw_box(addr, stride, color);
+}
+
+__inline__ void V210_write_32bit_value(void *frame_bytes, uint32_t stride, uint32_t value, uint32_t lineNr)
+{
+	for (int p = 31, sh = 0; p >= 0; p--, sh++) {
+		V210_draw_box_at(((uint32_t *)frame_bytes), stride,
+			(value & (1 << sh)) == (uint32_t)(1 << sh), p * 30, lineNr);
+	}
+}
+
+__inline__ uint32_t V210_read_32bit_value(void *frame_bytes, uint32_t stride, uint32_t lineNr)
+{
+	int xpos = 0;
+	uint32_t bits = 0;
+	for (int i = 0; i < 32; i++) {
+		xpos = (i * 30) + 8;
+		/* Sample the pixel eight lines deeper than the initial line, and eight pixels in from the left */
+		uint32_t *addr = ((uint32_t *)frame_bytes) + ((lineNr + 8) * (stride / 4));
+		addr += ((xpos / 6) * 4);
+
+		bits <<= 1;
+
+		/* Sample the pixel.... Compressor will decimate, we'll need a luma threshold for production. */
+		if ((addr[1] & 0x3ff) > 0x080)
+			bits |= 1;
+	}
+	return bits;
+}
+#endif
+
 class DeckLinkCaptureDelegate;
 
 typedef struct
@@ -115,11 +216,6 @@ typedef struct
     /* we need to hold onto the IDeckLinkConfiguration object, or our settings will not apply.
        see section 2.4.15 of the blackmagic decklink sdk documentation. */
     IDeckLinkConfiguration *p_config;
-
-#if 0
-    int      probe_buf_len;
-    int32_t  *audio_probe_buf;
-#endif
 
     /* Video */
     AVCodec         *dec;
@@ -153,6 +249,17 @@ typedef struct
     /* SMPTE2038 packetizer */
     struct smpte2038_packetizer_s *smpte2038_ctx;
 
+#if KL_PRBS_INPUT
+    struct prbs_context_s prbs;
+#endif
+/* TODO: We need to support bitstream on any of the 8 audio pairs.
+ * Todoy we support it on pair 1 only.
+ */
+    struct smpte337_detector_s *smpte337_detector;
+
+    /* Have we detected bitstream AC3 on audio channels 0/1? */
+    int smpte337_detected_ac3;
+    int smpte337_frames_written;
 } decklink_ctx_t;
 
 typedef struct
@@ -172,6 +279,7 @@ typedef struct
     int enable_smpte2038;
     int enable_scte35;
     int enable_vanc_cache;
+    int enable_bitstream_audio;
 
     /* Output */
     int probe_success;
@@ -243,9 +351,11 @@ static void convert_colorspace_and_parse_vanc(decklink_ctx_t *decklink_ctx, stru
     if (decklink_ctx->smpte2038_ctx)
         smpte2038_packetizer_begin(decklink_ctx->smpte2038_ctx);
 
-	int ret = vanc_packet_parse(vanchdl, lineNr, decoded_words, sizeof(decoded_words) / (sizeof(unsigned short)));
-	if (ret < 0) {
-        /* No VANC on this line */
+	if (decklink_ctx->vanchdl) {
+		int ret = vanc_packet_parse(vanchdl, lineNr, decoded_words, sizeof(decoded_words) / (sizeof(unsigned short)));
+		if (ret < 0) {
+      	  /* No VANC on this line */
+		}
 	}
 
     if (decklink_ctx->smpte2038_ctx) {
@@ -396,7 +506,7 @@ public:
                     decklink_opts_->card_idx, decklink_ctx->enabled_mode_id, mode_id);
                 printf("Decklink card index %i: Resolution changed from %08x to %08x, aborting.\n",
                     decklink_opts_->card_idx, decklink_ctx->enabled_mode_id, mode_id);
-                exit(0); /* Take an intensional hard exit */
+                //exit(0); /* Take an intensional hard exit */
             }
         }
         return S_OK;
@@ -412,6 +522,9 @@ private:
 
 static void _vanc_cache_dump(decklink_ctx_t *ctx)
 {
+    if (ctx->vanchdl)
+        return;
+
     for (int d = 0; d <= 0xff; d++) {
         for (int s = 0; s <= 0xff; s++) {
             struct vanc_cache_s *e = vanc_cache_lookup(ctx->vanchdl, d, s);
@@ -430,6 +543,21 @@ static void _vanc_cache_dump(decklink_ctx_t *ctx)
         }
     }
 }
+
+#if KL_PRBS_INPUT
+static void dumpAudio(uint16_t *ptr, int fc, int num_channels)
+{
+        fc = 4;
+        uint32_t *p = (uint32_t *)ptr;
+        for (int i = 0; i < fc; i++) {
+                printf("%d.", i);
+                for (int j = 0; j < num_channels; j++)
+                        printf("%08x ", *p++);
+                printf("\n");
+        }
+}
+static int prbs_inited = 0;
+#endif
 
 HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFrame *videoframe, IDeckLinkAudioInputPacket *audioframe )
 {
@@ -458,16 +586,27 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
         }
     }
 
+
     av_init_packet( &pkt );
 
     if( videoframe )
     {
+#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
+        kl_histogram_update(&frame_interval);
+        if (histogram_dump++ > 240) {
+                histogram_dump = 0;
+#if PRINT_HISTOGRAMS
+                kl_histogram_printf(&frame_interval);
+#endif
+        }
+#endif
+
         if( videoframe->GetFlags() & bmdFrameHasNoInputSource )
         {
             syslog( LOG_ERR, "Decklink card index %i: No input signal detected", decklink_opts_->card_idx );
             return S_OK;
         }
-        else if( decklink_opts_->probe )
+        else if (decklink_opts_->probe && decklink_ctx->smpte337_frames_written > 6)
             decklink_opts_->probe_success = 1;
 
         /* use SDI ticks as clock source */
@@ -496,6 +635,25 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
         const int stride = videoframe->GetRowBytes();
 
         videoframe->GetBytes( &frame_bytes );
+
+#if WRITE_OSD_VALUE
+	static uint32_t xxx = 0;
+	V210_write_32bit_value(frame_bytes, stride, xxx++, 100);
+#endif
+#if READ_OSD_VALUE
+	{
+		static uint32_t xxx = 0;
+		uint32_t val = V210_read_32bit_value(frame_bytes, stride, 210);
+		if (xxx + 1 != val) {
+                        char t[160];
+                        time_t now = time(0);
+                        sprintf(t, "%s", ctime(&now));
+                        t[strlen(t) - 1] = 0;
+                        fprintf(stderr, "%s: KL OSD counter discontinuity, expected %08" PRIx32 " got %08" PRIx32 "\n", t, xxx + 1, val);
+		}
+		xxx = val;
+	}
+#endif
 
         /* TODO: support format switching (rare in SDI) */
         int j;
@@ -667,6 +825,8 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
             raw_frame->timebase_den = decklink_opts_->timebase_den;
 
             memcpy( &raw_frame->img, &raw_frame->alloc_img, sizeof(raw_frame->alloc_img) );
+//PRINT_OBE_IMAGE(&raw_frame->img      , "      DECK->img");
+//PRINT_OBE_IMAGE(&raw_frame->alloc_img, "DECK->alloc_img");
             if( IS_SD( decklink_opts_->video_format ) )
             {
                 raw_frame->img.first_line = first_active_line[j].line;
@@ -704,7 +864,25 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
         }
     } /* if video frame */
 
-    /* TODO: probe SMPTE 337M audio */
+    if (audioframe) {
+        if(OPTION_ENABLED_(bitstream_audio)) {
+            audioframe->GetBytes(&frame_bytes);
+
+            /* Look for bitstream in audio channels 0 and 1 */
+            /* TODO: Examine other channels. */
+            /* TODO: Kinda pointless caching a successful find, because those
+             * values held in decklink_ctx are thrown away when the probe completes. */
+            if (decklink_ctx->smpte337_detector) {
+                decklink_ctx->smpte337_frames_written++;
+                smpte337_detector_write(decklink_ctx->smpte337_detector, (uint8_t *)frame_bytes,
+                    audioframe->GetSampleFrameCount(),
+                    32,
+                    decklink_opts_->num_channels,
+                    decklink_opts_->num_channels * (32 / 8),
+                    2);
+            }
+        }
+    }
 
     if( audioframe && !decklink_opts_->probe )
     {
@@ -719,6 +897,46 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
         raw_frame->audio_frame.num_samples = audioframe->GetSampleFrameCount();
         raw_frame->audio_frame.num_channels = decklink_opts_->num_channels;
         raw_frame->audio_frame.sample_fmt = AV_SAMPLE_FMT_S32P;
+#if KL_PRBS_INPUT
+        {
+            uint32_t *p = (uint32_t *)frame_bytes;
+            //dumpAudio((uint16_t *)p, audioframe->GetSampleFrameCount(), raw_frame->audio_frame.num_channels);
+
+            if (prbs_inited == 0) {
+                for (int i = 0; i < audioframe->GetSampleFrameCount(); i++) {
+                    for (int j = 0; j < raw_frame->audio_frame.num_channels; j++) {
+                        if (i == (audioframe->GetSampleFrameCount() - 1)) {
+                            if (j == (raw_frame->audio_frame.num_channels - 1)) {
+                                printf("Seeding audio PRBS sequence with upstream value 0x%08x\n", *p >> 16);
+                                prbs15_init_with_seed(&decklink_ctx->prbs, *p >> 16);
+                            }
+                        }
+			p++;
+                    }
+                }
+                prbs_inited = 1;
+            } else {
+                for (int i = 0; i < audioframe->GetSampleFrameCount(); i++) {
+                    for (int j = 0; j < raw_frame->audio_frame.num_channels; j++) {
+                        uint32_t a = *p++ >> 16;
+                        uint32_t b = prbs15_generate(&decklink_ctx->prbs);
+                        if (a != b) {
+                            char t[160];
+                            time_t now = time(0);
+                            sprintf(t, "%s", ctime(&now));
+                            t[strlen(t) - 1] = 0;
+                            fprintf(stderr, "%s: KL PRSB15 Audio frame discontinuity, expected %08" PRIx32 " got %08" PRIx32 "\n", t, b, a);
+                            prbs_inited = 0;
+
+                            // Break the sample frame loop i
+                            i = audioframe->GetSampleFrameCount();
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+#endif
 
         if( av_samples_alloc( raw_frame->audio_frame.audio_data, &raw_frame->audio_frame.linesize, decklink_opts_->num_channels,
                               raw_frame->audio_frame.num_samples, (AVSampleFormat)raw_frame->audio_frame.sample_fmt, 0 ) < 0 )
@@ -745,8 +963,46 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
                 raw_frame->input_stream_id = decklink_ctx->device->streams[i]->input_stream_id;
         }
 
-        if( add_to_filter_queue( decklink_ctx->h, raw_frame ) < 0 )
-            goto fail;
+        if(!decklink_ctx->smpte337_detected_ac3) {
+            if( add_to_filter_queue( decklink_ctx->h, raw_frame ) < 0 )
+                goto fail;
+        } else {
+                /* TODO: Allocating a frame then throwing it away is a hack.
+                 * This entire function needs completely refactored.
+                 */
+                raw_frame->release_data(raw_frame);
+                raw_frame->release_frame(raw_frame);
+        }
+
+        if(decklink_ctx->smpte337_detected_ac3)
+        { /* TODO: Compressed Audio - Process each AC3 stream detected.... and create a 
+           * frame for each distinct output PES we want.
+           */
+
+            raw_frame = new_raw_frame();
+            raw_frame->audio_frame.num_samples = audioframe->GetSampleFrameCount();
+            raw_frame->audio_frame.num_channels = decklink_opts_->num_channels;
+            raw_frame->audio_frame.sample_fmt = AV_SAMPLE_FMT_S32P; /* No specific format. The audio filter will play passthrough. */
+
+            int l = audioframe->GetSampleFrameCount() * decklink_opts_->num_channels * (32 / 8);
+            raw_frame->audio_frame.audio_data[0] = (uint8_t *)malloc(l);
+            raw_frame->audio_frame.linesize = raw_frame->audio_frame.num_channels * (32 / 8);
+
+            memcpy(raw_frame->audio_frame.audio_data[0], frame_bytes, l);
+
+            raw_frame->audio_frame.sample_fmt = AV_SAMPLE_FMT_NONE;
+
+            raw_frame->pts = packet_time;
+            raw_frame->release_data = obe_release_audio_data;
+            raw_frame->release_frame = obe_release_frame;
+            for (int i = 0; i < decklink_ctx->device->num_input_streams; i++) {
+                if( decklink_ctx->device->streams[i]->stream_format == AUDIO_AC_3_BITSTREAM) {
+                    raw_frame->input_stream_id = decklink_ctx->device->streams[i]->input_stream_id;
+                    break;
+                }
+            }
+            add_to_filter_queue(decklink_ctx->h, raw_frame);
+        }
     }
 
 end:
@@ -782,6 +1038,11 @@ static void close_card( decklink_opts_t *decklink_opts )
     if (decklink_ctx->smpte2038_ctx) {
         smpte2038_packetizer_free(&decklink_ctx->smpte2038_ctx);
         decklink_ctx->smpte2038_ctx = 0;
+    }
+
+    if (decklink_ctx->smpte337_detector) {
+        smpte337_detector_free(decklink_ctx->smpte337_detector);
+        decklink_ctx->smpte337_detector = 0;
     }
 
     if( decklink_ctx->p_config )
@@ -947,12 +1208,6 @@ static int cb_SCTE_104(void *callback_context, struct vanc_context_s *ctx, struc
 			t[ strlen(t) - 1] = 0;
 			syslog(LOG_INFO, "[decklink] SCTE104 frames present");
 			fprintf(stdout, "[decklink] SCTE104 frames present  @ %s", t);
-#if 0
-			int dlen = pkt->hdr.rawLengthWords;
-			//dlen = 512;
-			for (int i = 0; i < dlen; i++)
-				printf("%04x ", pkt->hdr.raw[i]);
-#endif
 			printf("\n");
 			fflush(stdout);
 
@@ -982,6 +1237,25 @@ static int cb_all(void *callback_context, struct vanc_context_s *ctx, struct pac
 	return 0;
 }
 
+static int cb_VANC_TYPE_KL_UINT64_COUNTER(void *callback_context, struct vanc_context_s *ctx, struct packet_kl_u64le_counter_s *pkt)
+{
+        /* Have the library display some debug */
+	static uint64_t lastGoodKLFrameCounter = 0;
+        if (lastGoodKLFrameCounter && lastGoodKLFrameCounter + 1 != pkt->counter) {
+                char t[160];
+                time_t now = time(0);
+                sprintf(t, "%s", ctime(&now));
+                t[strlen(t) - 1] = 0;
+
+                fprintf(stderr, "%s: KL VANC frame counter discontinuity was %" PRIu64 " now %" PRIu64 "\n",
+                        t,
+                        lastGoodKLFrameCounter, pkt->counter);
+        }
+        lastGoodKLFrameCounter = pkt->counter;
+
+        return 0;
+}
+
 static struct vanc_callbacks_s callbacks = 
 {
 	.payload_information	= cb_PAYLOAD_INFORMATION,
@@ -989,11 +1263,43 @@ static struct vanc_callbacks_s callbacks =
 	.eia_608		= cb_EIA_608,
 	.scte_104		= cb_SCTE_104,
 	.all			= cb_all,
+	.kl_i64le_counter       = cb_VANC_TYPE_KL_UINT64_COUNTER,
 };
 /* End: VANC Callbacks */
 
+static void * detector_callback(void *user_context,
+        struct smpte337_detector_s *ctx,
+        uint8_t datamode, uint8_t datatype, uint32_t payload_bitCount, uint8_t *payload)
+{
+	decklink_ctx_t *decklink_ctx = (decklink_ctx_t *)user_context;
+#if 0
+        printf("%s() datamode = %d [%sbit], datatype = %d [payload: %s]"
+                ", payload_bitcount = %d, payload = %p\n",
+                __func__,
+                datamode,
+                datamode == 0 ? "16" :
+                datamode == 1 ? "20" :
+                datamode == 2 ? "24" : "Reserved",
+                datatype,
+                datatype == 1 ? "SMPTE338 / AC-3 (audio) data" : "TBD",
+                payload_bitCount,
+		payload);
+#endif
+
+	if (datatype == 1 /* AC3 */) {
+		decklink_ctx->smpte337_detected_ac3 = 1;
+	} else
+		fprintf(stderr, "[decklink] Detected datamode %d, we don't support it.",
+			datamode);
+
+        return 0;
+}
+
 static int open_card( decklink_opts_t *decklink_opts )
 {
+#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
+    kl_histogram_reset(&frame_interval, "video frame intervals", KL_BUCKET_VIDEO);
+#endif
     decklink_ctx_t *decklink_ctx = &decklink_opts->decklink_ctx;
     int         found_mode;
     int         ret = 0;
@@ -1037,6 +1343,13 @@ static int open_card( decklink_opts_t *decklink_opts )
         }
     } else
 	callbacks.all = NULL;
+
+    decklink_ctx->smpte337_detected_ac3 = 0;
+    if (OPTION_ENABLED(bitstream_audio)) {
+        decklink_ctx->smpte337_detector = smpte337_detector_alloc((smpte337_detector_callback)detector_callback,
+            decklink_ctx);
+    } else
+        decklink_ctx->smpte337_frames_written = 256;
 
 #if 1
 #pragma message "SCTE104 verbose debugging enabled."
@@ -1345,7 +1658,7 @@ static void *probe_stream( void *ptr )
     obe_input_t *user_opts = &probe_ctx->user_opts;
     obe_device_t *device;
     obe_int_input_stream_t *streams[MAX_STREAMS];
-    int cur_stream = 2;
+    int cur_stream = 0;
     obe_sdi_non_display_data_t *non_display_parser;
     decklink_ctx_t *decklink_ctx;
 
@@ -1367,6 +1680,7 @@ static void *probe_stream( void *ptr )
     decklink_opts->enable_smpte2038 = user_opts->enable_smpte2038;
     decklink_opts->enable_scte35 = user_opts->enable_scte35;
     decklink_opts->enable_vanc_cache = user_opts->enable_vanc_cache;
+    decklink_opts->enable_bitstream_audio = user_opts->enable_bitstream_audio;
 
     decklink_opts->probe = non_display_parser->probe = 1;
 
@@ -1394,9 +1708,6 @@ static void *probe_stream( void *ptr )
         goto finish;
     }
 
-    /* TODO: probe for SMPTE 337M */
-    /* TODO: factor some of the code below out */
-
     for( int i = 0; i < 2; i++ )
     {
         streams[i] = (obe_int_input_stream_t*)calloc( 1, sizeof(*streams[i]) );
@@ -1404,12 +1715,12 @@ static void *probe_stream( void *ptr )
             goto finish;
 
         /* TODO: make it take a continuous set of stream-ids */
-        pthread_mutex_lock( &h->device_list_mutex );
-        streams[i]->input_stream_id = h->cur_input_stream_id++;
-        pthread_mutex_unlock( &h->device_list_mutex );
 
         if( i == 0 )
         {
+            pthread_mutex_lock( &h->device_list_mutex );
+            streams[i]->input_stream_id = h->cur_input_stream_id++;
+            pthread_mutex_unlock( &h->device_list_mutex );
             streams[i]->stream_type = STREAM_TYPE_VIDEO;
             streams[i]->stream_format = VIDEO_UNCOMPRESSED;
             streams[i]->width  = decklink_opts->width;
@@ -1423,16 +1734,48 @@ static void *probe_stream( void *ptr )
 
             if( add_non_display_services( non_display_parser, streams[i], USER_DATA_LOCATION_FRAME ) < 0 )
                 goto finish;
+
+            cur_stream++;
         }
-        else if( i == 1 )
+        else if(i == 1 && !decklink_ctx->smpte337_detected_ac3)
         {
+            pthread_mutex_lock( &h->device_list_mutex );
+            streams[i]->input_stream_id = h->cur_input_stream_id++;
+            pthread_mutex_unlock( &h->device_list_mutex );
             streams[i]->stream_type = STREAM_TYPE_AUDIO;
             streams[i]->stream_format = AUDIO_PCM;
             streams[i]->num_channels  = 16;
             streams[i]->sample_format = AV_SAMPLE_FMT_S32P;
             /* TODO: support other sample rates */
             streams[i]->sample_rate = 48000;
+            cur_stream++;
         }
+    }
+
+    /* Add a new output stream type, bitstream audio. */
+    if (decklink_ctx->smpte337_detected_ac3)
+    {
+        streams[cur_stream] = (obe_int_input_stream_t*)calloc(1, sizeof(*streams[cur_stream]));
+        if (!streams[cur_stream])
+            goto finish;
+
+        pthread_mutex_lock(&h->device_list_mutex);
+        streams[cur_stream]->input_stream_id = h->cur_input_stream_id++;
+        pthread_mutex_unlock(&h->device_list_mutex);
+
+        streams[cur_stream]->stream_type = STREAM_TYPE_AUDIO;
+        streams[cur_stream]->stream_format = AUDIO_AC_3_BITSTREAM;
+
+	/* In reality, the muxer inspects the bistream for these details before constructing a descriptor.
+	 * We expose it here show the probe message on the console are a little more reasonable.
+	 * TODO: Fill out sample_rate and bitrate from the SMPTE337 detector.
+	 */
+        streams[cur_stream]->sample_rate = 48000;
+        streams[cur_stream]->bitrate = 384;
+        streams[cur_stream]->pid = 0x124; /* TODO: hardcoded PID not currently used. */
+        if(add_non_display_services(non_display_parser, streams[cur_stream], USER_DATA_LOCATION_DVB_STREAM) < 0 )
+            goto finish;
+        cur_stream++;
     }
 
     /* Add a new output stream type, a TABLE_SECTION mechanism.
@@ -1527,6 +1870,8 @@ static void *probe_stream( void *ptr )
     device->device_type = INPUT_DEVICE_DECKLINK;
     memcpy( &device->user_opts, user_opts, sizeof(*user_opts) );
 
+    /* Upstream is responsible for freeing streams[x] allocations */
+
     /* add device */
     add_device( h, device );
 
@@ -1568,6 +1913,7 @@ static void *open_input( void *ptr )
     decklink_opts->enable_smpte2038 = user_opts->enable_smpte2038;
     decklink_opts->enable_scte35 = user_opts->enable_scte35;
     decklink_opts->enable_vanc_cache = user_opts->enable_vanc_cache;
+    decklink_opts->enable_bitstream_audio = user_opts->enable_bitstream_audio;
 
     decklink_ctx = &decklink_opts->decklink_ctx;
 

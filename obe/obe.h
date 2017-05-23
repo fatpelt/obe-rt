@@ -113,6 +113,7 @@ typedef struct
     int enable_smpte2038;
     int enable_scte35;
     int enable_vanc_cache;
+    int enable_bitstream_audio;
 } obe_input_t;
 
 /**** Stream Formats ****/
@@ -137,6 +138,7 @@ enum stream_formats_e
     AUDIO_E_AC_3, /* ATSC A/52B Annex E / Enhanced AC-3 */
 //    AUDIO_E_DIST, /* E Distribution Audio */
     AUDIO_AAC,
+    AUDIO_AC_3_BITSTREAM,   /* ATSC A/52B / AC-3 Bitstream passthorugh */
 
     SUBTITLES_DVB,
     MISC_TELETEXT,
@@ -234,7 +236,7 @@ typedef struct
     int sample_format;
 
     /* Compressed Audio */
-    int bitrate;
+    int bitrate; /* Kbps */
     int aac_is_latm; /* LATM is sometimes known as MPEG-4 Encapsulation */
 
     /** Subtitles **/
@@ -328,7 +330,7 @@ int obe_convert_analogue_to_smpte( int format, int line_analogue, int field, int
  * You can use the functions in the x264 API for tweaking or edit the parameter struct directly.
  * Be aware that some parameters will affect hardware support.
  */
-int obe_populate_avc_encoder_params( obe_t *h, int input_stream_id, x264_param_t *param );
+int obe_populate_avc_encoder_params( obe_t *h, int input_stream_id, x264_param_t *param, const char *preset_name);
 
 /**** 3DTV ****/
 /* Arrangements - Frame Packing */

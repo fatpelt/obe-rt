@@ -31,6 +31,9 @@
 #include "mux/mux.h"
 #include "output/output.h"
 
+/* Avoid a minor compiler warning and defining GNU_SOURCE */
+extern int pthread_setname_np(pthread_t thread, const char *name);
+
 /** Utilities **/
 int64_t obe_mdate( void )
 {
@@ -270,6 +273,9 @@ int add_to_filter_queue( obe_t *h, obe_raw_frame_t *raw_frame )
     if( !filter )
         return -1;
 
+#if 0
+PRINT_OBE_FILTER(filter, "ADD TO QUEUE");
+#endif
     return add_to_queue( &filter->queue, raw_frame );
 }
 
@@ -688,7 +694,8 @@ int obe_probe_device( obe_t *h, obe_input_t *input_device, obe_input_program_t *
     {
         fprintf( stderr, "Could not probe device \n" );
         program = NULL;
-        return -1;
+        args = NULL;
+        goto fail;
     }
 
     // TODO metadata etc
@@ -697,7 +704,7 @@ int obe_probe_device( obe_t *h, obe_input_t *input_device, obe_input_program_t *
     if( !program->streams )
     {
         fprintf( stderr, "Malloc failed \n" );
-        return -1;
+        goto fail;
     }
 
     h->devices[h->num_devices-1]->probed_streams = program->streams;
@@ -745,7 +752,7 @@ fail:
     return -1;
 }
 
-int obe_populate_avc_encoder_params( obe_t *h, int input_stream_id, x264_param_t *param )
+int obe_populate_avc_encoder_params( obe_t *h, int input_stream_id, x264_param_t *param, const char *preset_name)
 {
     obe_int_input_stream_t *stream = get_input_stream( h, input_stream_id );
     if( !stream )
@@ -766,9 +773,10 @@ int obe_populate_avc_encoder_params( obe_t *h, int input_stream_id, x264_param_t
         return -1;
     }
 
-    if( h->obe_system == OBE_SYSTEM_TYPE_LOWEST_LATENCY || h->obe_system == OBE_SYSTEM_TYPE_LOW_LATENCY )
-        x264_param_default_preset( param, "veryfast", "zerolatency" );
-    else
+    if( h->obe_system == OBE_SYSTEM_TYPE_LOWEST_LATENCY || h->obe_system == OBE_SYSTEM_TYPE_LOW_LATENCY ) {
+        x264_param_default_preset(param, preset_name, "zerolatency");
+        // printf("Using x264 preset: %s\n", stream->preset_name);
+    } else
         x264_param_default( param );
 
     param->b_deterministic = 0;
@@ -831,7 +839,11 @@ int obe_populate_avc_encoder_params( obe_t *h, int input_stream_id, x264_param_t
     }
 
     x264_param_apply_profile( param, X264_BIT_DEPTH == 10 ? "high10" : "high" );
+#if X264_BUILD < 148
     param->i_nal_hrd = X264_NAL_HRD_FAKE_VBR;
+#else
+    param->i_nal_hrd = X264_NAL_HRD_VBR;
+#endif
     param->b_aud = 1;
     param->i_log_level = X264_LOG_INFO;
 
@@ -839,6 +851,7 @@ int obe_populate_avc_encoder_params( obe_t *h, int input_stream_id, x264_param_t
 
     if( h->obe_system == OBE_SYSTEM_TYPE_GENERIC )
     {
+#if X264_BUILD < 148
         param->sc.f_speed = 1.0;
         param->sc.b_alt_timer = 1;
         if( param->i_width >= 1280 && param->i_height >= 720 )
@@ -848,6 +861,7 @@ int obe_populate_avc_encoder_params( obe_t *h, int input_stream_id, x264_param_t
             param->sc.max_preset = 10;
             param->i_bframe_adaptive = X264_B_ADAPT_TRELLIS;
         }
+#endif
 
         param->rc.i_lookahead = param->i_keyint_max;
     }
@@ -1052,6 +1066,24 @@ int obe_start( obe_t *h )
                 }
                 pthread_setname_np(h->encoders[h->num_encoders]->encoder_thread, "obe-vid-encoder");
             }
+            else if(h->output_streams[i].stream_format == AUDIO_AC_3_BITSTREAM) {
+                h->output_streams[i].sdi_audio_pair = MAX( h->output_streams[i].sdi_audio_pair, 0 );
+                aud_enc_params = calloc(1, sizeof(*aud_enc_params));
+                if(!aud_enc_params) {
+                    fprintf(stderr, "Malloc failed\n");
+                    goto fail;
+                }
+                aud_enc_params->h = h;
+                aud_enc_params->encoder = h->encoders[h->num_encoders];
+                aud_enc_params->stream = &h->output_streams[i];
+
+                if (pthread_create(&h->encoders[h->num_encoders]->encoder_thread, NULL, ac3bitstream_encoder.start_encoder, (void*)aud_enc_params ) < 0 )
+                {
+                    fprintf(stderr, "Couldn't create ac3bitstream encode thread\n");
+                    goto fail;
+                }
+                pthread_setname_np(h->encoders[h->num_encoders]->encoder_thread, "obe-aud-encoder");
+            }
             else if( h->output_streams[i].stream_format == AUDIO_AC_3 || h->output_streams[i].stream_format == AUDIO_E_AC_3 ||
                      h->output_streams[i].stream_format == AUDIO_AAC  || h->output_streams[i].stream_format == AUDIO_MP2 )
             {
@@ -1180,6 +1212,9 @@ int obe_start( obe_t *h )
                 vid_filter_params->filter = h->filters[h->num_filters];
                 vid_filter_params->input_stream = input_stream;
                 vid_filter_params->target_csp = h->output_streams[i].avc_param.i_csp & X264_CSP_MASK;
+#if 0
+                vid_filter_params->target_csp = X264_CSP_I422;
+#endif
 
                 if( pthread_create( &h->filters[h->num_filters]->filter_thread, NULL, video_filter.start_filter, vid_filter_params ) < 0 )
                 {
@@ -1187,9 +1222,15 @@ int obe_start( obe_t *h )
                     goto fail;
                 }
                 pthread_setname_np(h->filters[h->num_filters]->filter_thread, "obe-vid-filter");
+#if 0
+PRINT_OBE_FILTER(h->filters[h->num_filters], "VIDEO FILTER");
+#endif
             }
             else
             {
+#if 0
+PRINT_OBE_FILTER(h->filters[h->num_filters], "AUDIO FILTER");
+#endif
                 aud_filter_params = calloc( 1, sizeof(*aud_filter_params) );
                 if( !aud_filter_params )
                 {
