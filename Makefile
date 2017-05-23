@@ -20,9 +20,6 @@ SRCSO =
 
 CONFIG := $(shell cat config.h)
 
-GIT_VERSION := $(shell git describe --abbrev=8 --dirty --always --tags)
-CFLAGS += -DGIT_VERSION=\"$(GIT_VERSION)\"
-
 # Optional module sources
 ifneq ($(findstring HAVE_LIBTWOLAME 1, $(CONFIG)),)
 SRCS += encoders/audio/mp2/twolame.c
