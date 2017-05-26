@@ -46,6 +46,7 @@
 #define MAX_STREAMS 40
 #define MAX_CHANNELS 16
 
+#define MIN_PROBE_TIME  5
 #define MAX_PROBE_TIME 20
 
 #define OBE_CLOCK 27000000LL
@@ -139,6 +140,7 @@ typedef struct
     uint64_t channel_layout;
     int num_channels; /* set if channel layout is 0 */
     int sample_rate;
+    int sdi_audio_pair; /* 1-8 */
 
     /* Raw Audio */
     int sample_format;
@@ -165,9 +167,6 @@ typedef struct
 
     /* VBI */
     int vbi_ntsc;
-
-    /** Misc **/
-    int source;
 } obe_int_input_stream_t;
 
 typedef struct
@@ -512,7 +511,8 @@ struct obe_t
 
     /* Statistics and Monitoring */
 
-
+    /* Misc configurable system parameters */
+    unsigned int probe_time_seconds;
 };
 
 typedef struct

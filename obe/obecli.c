@@ -83,7 +83,7 @@ static const char * const output_modules[]           = { "udp", "rtp", "linsys-a
 static const char * const addable_streams[]          = { "audio", "ttx" };
 static const char * const preset_names[]        = { "ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow", "placebo", NULL };
 
-static const char * system_opts[] = { "system-type", NULL };
+static const char * system_opts[] = { "system-type", "max-probe-time", NULL };
 static const char * input_opts[]  = { "location", "card-idx", "video-format", "video-connection", "audio-connection",
                                       "smpte2038", "scte35", "vanc-cache", "bitstream-audio", NULL };
 static const char * add_opts[] =    { "type" };
@@ -447,7 +447,7 @@ static int remove_stream( char *command, obecli_command_t *child )
 
     int output_stream_id = obe_otoi( command, -1 );
 
-    FAIL_IF_ERROR( output_stream_id < 0 || output_stream_id == 0 || cli.num_output_streams == 2,
+    FAIL_IF_ERROR( output_stream_id < 0 || output_stream_id == 0 || cli.num_output_streams == 2 || cli.num_output_streams <= output_stream_id,
                    "Invalid stream id\n" );
 
     free( cli.output_streams[output_stream_id].ts_opts.teletext_opts );
@@ -487,6 +487,17 @@ static int set_obe( char *command, obecli_command_t *child )
 
         FAIL_IF_ERROR( system_type && ( check_enum_value( system_type, system_types ) < 0 ),
                        "Invalid system type\n" );
+
+        char *max_probe_time  = obe_get_option(system_opts[1], opts);
+        if (max_probe_time) {
+            cli.h->probe_time_seconds = atoi(max_probe_time);
+            if ((cli.h->probe_time_seconds < 5) || (cli.h->probe_time_seconds > MAX_PROBE_TIME)) {
+                printf("%s valid values are %d to %d, defaulting to %d\n",
+                    system_opts[1], MIN_PROBE_TIME, MAX_PROBE_TIME, MAX_PROBE_TIME);
+                cli.h->probe_time_seconds = MAX_PROBE_TIME;
+            } else
+                printf("%s is now %d\n", system_opts[1], cli.h->probe_time_seconds);
+        }
 
         FAIL_IF_ERROR( cli.program.num_streams, "Cannot change OBE options after probing\n" )
 
@@ -1270,17 +1281,18 @@ static int show_input_streams( char *command, obecli_command_t *child )
             }
         }
         else if (stream->stream_type == STREAM_TYPE_AUDIO && stream->stream_format == AUDIO_AC_3_BITSTREAM) {
-            printf( "Input-stream-id: %d - Audio: %s digital bitstream\n", stream->input_stream_id, format_name);
+            printf( "Input-stream-id: %d - Audio: %s digital bitstream - SDI audio pair: %d\n", stream->input_stream_id, format_name, stream->sdi_audio_pair);
         }
         else if( stream->stream_type == STREAM_TYPE_AUDIO )
         {
             if( !stream->channel_layout )
-                snprintf( buf, sizeof(buf), "%i channels", stream->num_channels );
+                snprintf( buf, sizeof(buf), "%2i channels", stream->num_channels );
             else
                 av_get_channel_layout_string( buf, sizeof(buf), 0, stream->channel_layout );
-            printf( "Input-stream-id: %d - Audio: %s%s %s %ikHz \n", stream->input_stream_id, format_name,
+            printf( "Input-stream-id: %d - Audio: %s%s %s %ikHz - SDI audio pair: %d\n", stream->input_stream_id, format_name,
                     stream->stream_format == AUDIO_AAC ? stream->aac_is_latm ? " LATM" : " ADTS" : "",
-                    buf, stream->sample_rate / 1000);
+                    buf, stream->sample_rate / 1000,
+                    stream->sdi_audio_pair);
         }
         else if( stream->stream_format == SUBTITLES_DVB )
         {
@@ -1545,7 +1557,7 @@ static int probe_device( char *command, obecli_command_t *child )
             }
             else if( cli.program.streams[i].stream_type == STREAM_TYPE_AUDIO )
             {
-                cli.output_streams[i].sdi_audio_pair = 1;
+                cli.output_streams[i].sdi_audio_pair = cli.program.streams[i].sdi_audio_pair;
                 cli.output_streams[i].channel_layout = AV_CH_LAYOUT_STEREO;
             }
         }

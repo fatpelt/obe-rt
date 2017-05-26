@@ -471,6 +471,7 @@ obe_t *obe_setup( void )
         fprintf( stderr, "Malloc failed\n" );
         return NULL;
     }
+    h->probe_time_seconds = MAX_PROBE_TIME;
 
     pthread_mutex_init( &h->device_list_mutex, NULL );
 
@@ -591,7 +592,6 @@ int obe_probe_device( obe_t *h, obe_input_t *input_device, obe_input_program_t *
 
     obe_input_func_t  input;
 
-    int probe_time = MAX_PROBE_TIME;
     int i = 0;
     int prev_devices = h->num_devices;
     int cur_devices;
@@ -674,9 +674,9 @@ int obe_probe_device( obe_t *h, obe_input_t *input_device, obe_input_program_t *
     else
         printf( "Probing device: Decklink card %i. ", input_device->card_idx );
 
-    printf( "Timeout %i seconds \n", probe_time );
+    printf("Timeout %i seconds\n", h->probe_time_seconds);
 
-    while( i++ < probe_time )
+    while (i++ < h->probe_time_seconds)
     {
         sleep( 1 );
         fprintf( stderr, "." );
@@ -709,6 +709,7 @@ int obe_probe_device( obe_t *h, obe_input_t *input_device, obe_input_program_t *
 
     h->devices[h->num_devices-1]->probed_streams = program->streams;
 
+    /* Clone all of the probed input parameters into OBE's source abstraction. */
     for( i = 0; i < program->num_streams; i++ )
     {
         stream_in = h->devices[h->num_devices-1]->streams[i];
@@ -719,6 +720,7 @@ int obe_probe_device( obe_t *h, obe_input_t *input_device, obe_input_program_t *
         stream_out->stream_format = stream_in->stream_format;
 
         stream_out->bitrate = stream_in->bitrate;
+        stream_out->sdi_audio_pair = stream_in->sdi_audio_pair;
 
         stream_out->num_frame_data = stream_in->num_frame_data;
         stream_out->frame_data = stream_in->frame_data;
@@ -1067,7 +1069,8 @@ int obe_start( obe_t *h )
                 pthread_setname_np(h->encoders[h->num_encoders]->encoder_thread, "obe-vid-encoder");
             }
             else if(h->output_streams[i].stream_format == AUDIO_AC_3_BITSTREAM) {
-                h->output_streams[i].sdi_audio_pair = MAX( h->output_streams[i].sdi_audio_pair, 0 );
+                input_stream = get_input_stream(h, h->output_streams[i].input_stream_id);
+                h->output_streams[i].sdi_audio_pair = input_stream->sdi_audio_pair;
                 aud_enc_params = calloc(1, sizeof(*aud_enc_params));
                 if(!aud_enc_params) {
                     fprintf(stderr, "Malloc failed\n");
@@ -1106,7 +1109,7 @@ int obe_start( obe_t *h )
                 aud_enc_params->sample_rate = input_stream->sample_rate;
                 /* TODO: check the bitrate is allowed by the format */
 
-                h->output_streams[i].sdi_audio_pair = MAX( h->output_streams[i].sdi_audio_pair, 0 );
+                h->output_streams[i].sdi_audio_pair = input_stream->sdi_audio_pair;
 
                 /* Choose the optimal number of audio frames per PES
                  * TODO: This should be set after the encoder has told us the frame size */
