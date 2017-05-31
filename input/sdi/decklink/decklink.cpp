@@ -1401,8 +1401,7 @@ static int open_card( decklink_opts_t *decklink_opts )
         if (smpte2038_packetizer_alloc(&decklink_ctx->smpte2038_ctx) < 0) {
             fprintf(stderr, "Unable to allocate a SMPTE2038 context.\n");
         }
-    } else
-	callbacks.all = NULL;
+    }
 
     for (int i = 0; i < MAX_AUDIO_PAIRS; i++) {
         struct audio_pair_s *pair = &decklink_ctx->audio_pairs[i];
