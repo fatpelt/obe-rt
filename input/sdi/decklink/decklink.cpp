@@ -1349,8 +1349,8 @@ static void * detector_callback(void *user_context,
 		pair->smpte337_detected_ac3 = 1;
 	} else
 		fprintf(stderr, "[decklink] Detected datamode %d on pair %d, we don't support it.",
-			pair->nr,
-			datamode);
+			datamode,
+			pair->nr);
 
         return 0;
 }
