@@ -82,6 +82,7 @@ static const char * const mono_channels[]            = { "left", "right", 0 };
 static const char * const output_modules[]           = { "udp", "rtp", "linsys-asi", 0 };
 static const char * const addable_streams[]          = { "audio", "ttx" };
 static const char * const preset_names[]        = { "ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow", "placebo", NULL };
+static const char * entropy_modes[] = { "cabac", "cavlc", NULL };
 
 static const char * system_opts[] = { "system-type", "max-probe-time", NULL };
 static const char * input_opts[]  = { "location", "card-idx", "video-format", "video-connection", "audio-connection",
@@ -108,6 +109,7 @@ static const char * stream_opts[] = { "action", "format",
 
                                       "opencl", /* 40 */
                                       "preset-name", /* 41 */
+                                      "entropy", /* 42 */
                                       NULL };
 
 static const char * muxer_opts[]  = { "ts-type", "cbr", "ts-muxrate", "passthrough", "ts-id", "program-num", "pmt-pid", "pcr-pid",
@@ -659,7 +661,7 @@ static int set_stream( char *command, obecli_command_t *child )
 
             char *opencl  = obe_get_option( stream_opts[40], opts );
             const char *preset_name  = obe_get_option( stream_opts[41], opts );
-
+            const char *entropy_mode = obe_get_option( stream_opts[42], opts );
 
             if( input_stream->stream_type == STREAM_TYPE_VIDEO )
             {
@@ -667,6 +669,8 @@ static int set_stream( char *command, obecli_command_t *child )
 
                 FAIL_IF_ERROR(preset_name && (check_enum_value( preset_name, preset_names) < 0),
                               "Invalid preset-name\n" );
+                FAIL_IF_ERROR(entropy_mode && (check_enum_value(entropy_mode, entropy_modes) < 0),
+                              "Invalid entropy coding mode\n" );
 
                 if (preset_name) {
                     obe_populate_avc_encoder_params(cli.h,  input_stream->input_stream_id
@@ -676,6 +680,12 @@ static int set_stream( char *command, obecli_command_t *child )
 			/* cli.program.streams[i].input_stream_id */, avc_param, "veryfast");
                 }
 
+                /* We default to CABAC if the user has not specified an entropy mode. */
+                avc_param->b_cabac = 1;
+                if (entropy_mode) {
+                    if (strcasecmp(entropy_mode, "cavlc") == 0)
+                        avc_param->b_cabac = 0;
+                }
 
                 FAIL_IF_ERROR( profile && ( check_enum_value( profile, x264_profile_names ) < 0 ),
                                "Invalid AVC profile\n" );
