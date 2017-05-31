@@ -1626,7 +1626,7 @@ static void _usage(const char *prog, int exitcode)
     if (exitcode) {
         printf("%s -s <script.txt>\n", prog);
         printf("\t-h              - Display command line helps.\n");
-        printf("\t-s <script.txt> - Start OBE and begin executing a list of commands.\n");
+        printf("\t-c <script.txt> - Start OBE and begin executing a list of commands.\n");
         printf("\n");
         exit(exitcode);
     }
