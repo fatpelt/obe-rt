@@ -1292,6 +1292,51 @@ static int cb_all(void *callback_context, struct vanc_context_s *ctx, struct pac
 		}
 	}
 
+	if (decklink_ctx->vanchdl && pkt->did == 0x52 && pkt->dbnsdid == 0x01) {
+
+#if 0
+		/* Remove this section once we have formal 0x52 sample data. */
+		if (pkt->rawLengthWords >= 8) {
+			printf("DID 0x%02x SDID %02x : ", pkt->did, pkt->dbnsdid);
+			for (int i = 0; i < 8; i++)
+				printf("%04x ", pkt->raw[i]);
+			printf("\n");
+		}
+
+		static const unsigned short test4[] = {
+			0x0000, 0x03ff, 0x03ff, 0x0241, 0x0107, 0x0138,
+			0x0108, 0x02ff, 0x02ff, 0x0200, 0x0200, 0x0200,
+			0x0200, 0x0200, 0x0200, 0x0200, 0x0200, 0x0200,
+			0x0102, 0x0101, 0x0101, 0x0200, 0x010e, 0x0102,
+			0x0200, 0x0200, 0x0212, 0x0134, 0x0145, 0x0167,
+			0x0200, 0x0200, 0x0101, 0x012c, 0x0101, 0x0102,
+			0x0101, 0x0101, 0x010b, 0x0200, 0x0115, 0x0200,
+			0x0200, 0x0104, 0x02d2, 0x0200, 0x0101, 0x015e,
+			0x0101, 0x0203, 0x0101, 0x0102, 0x0203, 0x0203,
+			0x0101, 0x0102, 0x013b, 0x0101, 0x0101, 0x0200,
+			0x0101, 0x0200, 0x0261
+		};
+
+		pkt->rawLengthWords = sizeof(test4) / sizeof(unsigned short);
+		for (unsigned int i = 0; i < pkt->rawLengthWords; i++)
+			pkt->raw[i] = test4[i];
+#endif
+		/* Workaround -- SCTE104 on non-standard customer specific DID 0x52.
+		 * Change the sdid and did to something standard and ask the core to re-parse the packet.
+		 * Any multi-entrant issues here for the future? Probably yes.
+		 */
+
+		/* Patch the DID to reflect traditional SCTE104 and re-parse. */
+		/* DID 0x62 SDID 01 : 0000 03ff 03ff 0162 0101 0217 01ad 0115 */
+		pkt->raw[3] = 0x241;
+		pkt->raw[4] = 0x107;
+		int ret = vanc_packet_parse(decklink_ctx->vanchdl, pkt->lineNr, pkt->raw, pkt->rawLengthWords);
+		if (ret < 0) {
+			/* No VANC on this line */
+			fprintf(stderr, "%s() patched VANC for did 0x52 failed\n", __func__);
+		}
+	}
+
 	return 0;
 }
 
@@ -1349,8 +1394,8 @@ static void * detector_callback(void *user_context,
 		pair->smpte337_detected_ac3 = 1;
 	} else
 		fprintf(stderr, "[decklink] Detected datamode %d on pair %d, we don't support it.",
-			pair->nr,
-			datamode);
+			datamode,
+			pair->nr);
 
         return 0;
 }
@@ -1401,8 +1446,7 @@ static int open_card( decklink_opts_t *decklink_opts )
         if (smpte2038_packetizer_alloc(&decklink_ctx->smpte2038_ctx) < 0) {
             fprintf(stderr, "Unable to allocate a SMPTE2038 context.\n");
         }
-    } else
-	callbacks.all = NULL;
+    }
 
     for (int i = 0; i < MAX_AUDIO_PAIRS; i++) {
         struct audio_pair_s *pair = &decklink_ctx->audio_pairs[i];
