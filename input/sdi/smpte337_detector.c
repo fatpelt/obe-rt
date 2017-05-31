@@ -137,8 +137,14 @@ static void run_detector(struct smpte337_detector_s *ctx)
 			break;
 
 		/* Find the supported patterns - In this case, AC3 only in 16bit mode */
+		/* See SMPTE 337M 2015 spec table 6.
+		 * Pa = dat0/1
+		 * Pb = dat2/3 ... etc
+		 */
 		if (dat[0] == 0xF8 && dat[1] == 0x72 && dat[2] == 0x4e && dat[3] == 0x1f) {
-			/* pa = 16bit, pb = 16bit */
+			/* Confirmed.... pa = 16bit, pb = 16bit */
+
+			/* Check the burst_info.... */
 			if ((dat[5] & 0x1f) == 0x01) {
 				/* Bits 0-4 datatype, 1 = AC3 */
 				/* Bits 5-6 datamode, 0 = 16bit */
