@@ -110,6 +110,7 @@ static const char * stream_opts[] = { "action", "format",
                                       "opencl", /* 40 */
                                       "preset-name", /* 41 */
                                       "entropy", /* 42 */
+                                      "audio-offset", /* 43 */
                                       NULL };
 
 static const char * muxer_opts[]  = { "ts-type", "cbr", "ts-muxrate", "passthrough", "ts-id", "program-num", "pmt-pid", "pcr-pid",
@@ -662,6 +663,7 @@ static int set_stream( char *command, obecli_command_t *child )
             char *opencl  = obe_get_option( stream_opts[40], opts );
             const char *preset_name  = obe_get_option( stream_opts[41], opts );
             const char *entropy_mode = obe_get_option( stream_opts[42], opts );
+            const char *audio_offset = obe_get_option( stream_opts[43], opts );
 
             if( input_stream->stream_type == STREAM_TYPE_VIDEO )
             {
@@ -876,6 +878,8 @@ static int set_stream( char *command, obecli_command_t *child )
                     memcpy( cli.output_streams[output_stream_id].ts_opts.lang_code, lang, 3 );
                     cli.output_streams[output_stream_id].ts_opts.lang_code[3] = 0;
                 }
+                cli.output_streams[output_stream_id].audio_offset_ms =
+                    obe_otoi(audio_offset, cli.output_streams[output_stream_id].audio_offset_ms);
             }
             else if( output_stream->stream_format == MISC_TELETEXT ||
                      output_stream->stream_format == VBI_RAW )
