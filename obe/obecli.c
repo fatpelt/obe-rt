@@ -323,7 +323,7 @@ static double obe_otof( char *str, double def )
    return ret;
 }
 
-static int obe_otoi( char *str, int def )
+static int obe_otoi(const char *str, int def)
 {
     int ret = def;
     if( str )
