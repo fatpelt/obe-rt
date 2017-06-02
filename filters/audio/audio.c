@@ -101,6 +101,9 @@ printf("%s() raw_frame->input_stream_id = %d, num_encoders = %d\n", __func__, ra
                             num_channels,
                             split_raw_frame->audio_frame.sample_fmt);
 
+            /* PTS is the standard 27MHz clock. Adjust by ms. */
+            split_raw_frame->pts += ((int64_t)output_stream->audio_offset_ms * (OBE_CLOCK/1000));
+
             add_to_encode_queue(h, split_raw_frame, h->encoders[i]->output_stream_id);
         } /* For all PCM encoders */
 
