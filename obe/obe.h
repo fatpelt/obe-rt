@@ -431,6 +431,7 @@ typedef struct
     int sdi_audio_pair;
     uint64_t channel_layout;
     int mono_channel;
+    int audio_offset_ms;
 
     /* Metadata */
     obe_audio_metadata_t audio_metadata;
