@@ -540,7 +540,7 @@ private:
 
 static void _vanc_cache_dump(decklink_ctx_t *ctx)
 {
-    if (ctx->vanchdl)
+    if (ctx->vanchdl == NULL)
         return;
 
     for (int d = 0; d <= 0xff; d++) {
