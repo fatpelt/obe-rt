@@ -1615,9 +1615,10 @@ static int processCommand(char *line_read)
     if (ret == -1)
         fprintf( stderr, "%s: command not found \n", line_read );
 
+    /* TODO: I'm pretty sure this entire section is never executed. */
     if (!cli.h)
     {
-        cli.h = obe_setup();
+        cli.h = obe_setup(NULL);
         if( !cli.h )
         {
             fprintf( stderr, "obe_setup failed\n" );
@@ -1641,6 +1642,7 @@ static void _usage(const char *prog, int exitcode)
         printf("%s -s <script.txt>\n", prog);
         printf("\t-h              - Display command line helps.\n");
         printf("\t-c <script.txt> - Start OBE and begin executing a list of commands.\n");
+        printf("\t-L <string>     - When writing to syslog, use the 'obe-<string>' name/tag. [def: unset]\n");
         printf("\n");
         exit(exitcode);
     }
@@ -1655,8 +1657,9 @@ int main( int argc, char **argv )
     int   scriptInitialized = 0;
     char *line_read = NULL;
     int opt;
+    const char *syslogSuffix = NULL;
 
-    while ((opt = getopt(argc, argv, "c:h")) != -1) {
+    while ((opt = getopt(argc, argv, "c:hL:")) != -1) {
         switch (opt) {
         case 'c':
             script = optarg;
@@ -1668,6 +1671,23 @@ int main( int argc, char **argv )
                 fclose(fh);
             }
             break;
+        case 'L':
+        {
+            int failed = 0;
+            int l = strlen(optarg);
+            if (l <= 0 || l >= 32)
+                failed = 1;
+            for (int i = 0; i < l; i++) {
+                if (isspace(optarg[i]))
+                    failed = 1;
+            }
+            if (failed) {
+                fprintf(stderr, "-L string length must 1-31 characters long, with no whitespace.\n" );
+                return -1;
+            }
+            syslogSuffix = optarg;
+            break;
+        }
         case 'h':
         default:
             _usage(argv[0], 1);
@@ -1684,7 +1704,7 @@ int main( int argc, char **argv )
     sprintf( history_filename, "%s/.obecli_history", home_dir );
     read_history(history_filename);
 
-    cli.h = obe_setup();
+    cli.h = obe_setup(syslogSuffix);
     if( !cli.h )
     {
         fprintf( stderr, "obe_setup failed\n" );
