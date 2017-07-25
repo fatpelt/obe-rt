@@ -1085,24 +1085,6 @@ static void close_card( decklink_opts_t *decklink_opts )
 {
     decklink_ctx_t *decklink_ctx = &decklink_opts->decklink_ctx;
 
-    if (decklink_ctx->vanchdl) {
-        vanc_context_destroy(decklink_ctx->vanchdl);
-        decklink_ctx->vanchdl = 0;
-    }
-
-    if (decklink_ctx->smpte2038_ctx) {
-        smpte2038_packetizer_free(&decklink_ctx->smpte2038_ctx);
-        decklink_ctx->smpte2038_ctx = 0;
-    }
-
-    for (int i = 0; i < MAX_AUDIO_PAIRS; i++) {
-        struct audio_pair_s *pair = &decklink_ctx->audio_pairs[i];
-        if (pair->smpte337_detector) {
-            smpte337_detector_free(pair->smpte337_detector);
-            pair->smpte337_detector = 0;
-        }
-    }
-
     if( decklink_ctx->p_config )
         decklink_ctx->p_config->Release();
 
@@ -1122,6 +1104,24 @@ static void close_card( decklink_opts_t *decklink_opts )
     {
         avcodec_close( decklink_ctx->codec );
         av_free( decklink_ctx->codec );
+    }
+
+    if (decklink_ctx->vanchdl) {
+        vanc_context_destroy(decklink_ctx->vanchdl);
+        decklink_ctx->vanchdl = 0;
+    }
+
+    if (decklink_ctx->smpte2038_ctx) {
+        smpte2038_packetizer_free(&decklink_ctx->smpte2038_ctx);
+        decklink_ctx->smpte2038_ctx = 0;
+    }
+
+    for (int i = 0; i < MAX_AUDIO_PAIRS; i++) {
+        struct audio_pair_s *pair = &decklink_ctx->audio_pairs[i];
+        if (pair->smpte337_detector) {
+            smpte337_detector_free(pair->smpte337_detector);
+            pair->smpte337_detector = 0;
+        }
     }
 
     if( IS_SD( decklink_opts->video_format ) )
