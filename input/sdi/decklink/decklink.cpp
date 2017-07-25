@@ -67,6 +67,10 @@ static struct kl_histogram frame_interval;
 static int histogram_dump = 0;
 #endif
 
+#define container_of(ptr, type, member) ({          \
+    const typeof(((type *)0)->member)*__mptr = (ptr);    \
+             (type *)((char *)__mptr - offsetof(type, member)); })
+
 #define DECKLINK_VANC_LINES 100
 
 struct obe_to_decklink
@@ -283,6 +287,7 @@ typedef struct
     int enable_scte35;
     int enable_vanc_cache;
     int enable_bitstream_audio;
+    int enable_patch1;
 
     /* Output */
     int probe_success;
@@ -1292,41 +1297,14 @@ static int cb_all(void *callback_context, struct vanc_context_s *ctx, struct pac
 		}
 	}
 
-	if (decklink_ctx->vanchdl && pkt->did == 0x52 && pkt->dbnsdid == 0x01) {
+	decklink_opts_t *decklink_opts = container_of(decklink_ctx, decklink_opts_t, decklink_ctx);
+	if (OPTION_ENABLED(patch1) && decklink_ctx->vanchdl && pkt->did == 0x52 && pkt->dbnsdid == 0x01) {
 
-#if 0
-		/* Remove this section once we have formal 0x52 sample data. */
-		if (pkt->rawLengthWords >= 8) {
-			printf("DID 0x%02x SDID %02x : ", pkt->did, pkt->dbnsdid);
-			for (int i = 0; i < 8; i++)
-				printf("%04x ", pkt->raw[i]);
-			printf("\n");
-		}
-
-		static const unsigned short test4[] = {
-			0x0000, 0x03ff, 0x03ff, 0x0241, 0x0107, 0x0138,
-			0x0108, 0x02ff, 0x02ff, 0x0200, 0x0200, 0x0200,
-			0x0200, 0x0200, 0x0200, 0x0200, 0x0200, 0x0200,
-			0x0102, 0x0101, 0x0101, 0x0200, 0x010e, 0x0102,
-			0x0200, 0x0200, 0x0212, 0x0134, 0x0145, 0x0167,
-			0x0200, 0x0200, 0x0101, 0x012c, 0x0101, 0x0102,
-			0x0101, 0x0101, 0x010b, 0x0200, 0x0115, 0x0200,
-			0x0200, 0x0104, 0x02d2, 0x0200, 0x0101, 0x015e,
-			0x0101, 0x0203, 0x0101, 0x0102, 0x0203, 0x0203,
-			0x0101, 0x0102, 0x013b, 0x0101, 0x0101, 0x0200,
-			0x0101, 0x0200, 0x0261
-		};
-
-		pkt->rawLengthWords = sizeof(test4) / sizeof(unsigned short);
-		for (unsigned int i = 0; i < pkt->rawLengthWords; i++)
-			pkt->raw[i] = test4[i];
-#endif
-		/* Workaround -- SCTE104 on non-standard customer specific DID 0x52.
-		 * Change the sdid and did to something standard and ask the core to re-parse the packet.
-		 * Any multi-entrant issues here for the future? Probably yes.
+		/* Patch#1 -- SCTE104 VANC appearing in a non-standard DID.
+		 * Modify the DID to reflect traditional SCTE104 and re-parse.
+		 * Any potential multi-entrant libklvanc issues here? No now, future probably yes.
 		 */
 
-		/* Patch the DID to reflect traditional SCTE104 and re-parse. */
 		/* DID 0x62 SDID 01 : 0000 03ff 03ff 0162 0101 0217 01ad 0115 */
 		pkt->raw[3] = 0x241;
 		pkt->raw[4] = 0x107;
@@ -1793,6 +1771,7 @@ static void *probe_stream( void *ptr )
     decklink_opts->enable_scte35 = user_opts->enable_scte35;
     decklink_opts->enable_vanc_cache = user_opts->enable_vanc_cache;
     decklink_opts->enable_bitstream_audio = user_opts->enable_bitstream_audio;
+    decklink_opts->enable_patch1 = user_opts->enable_patch1;
 
     decklink_opts->probe = non_display_parser->probe = 1;
 
@@ -2007,6 +1986,7 @@ static void *open_input( void *ptr )
     decklink_opts->enable_scte35 = user_opts->enable_scte35;
     decklink_opts->enable_vanc_cache = user_opts->enable_vanc_cache;
     decklink_opts->enable_bitstream_audio = user_opts->enable_bitstream_audio;
+    decklink_opts->enable_patch1 = user_opts->enable_patch1;
 
     decklink_ctx = &decklink_opts->decklink_ctx;
 
