@@ -114,6 +114,7 @@ typedef struct
     int enable_scte35;
     int enable_vanc_cache;
     int enable_bitstream_audio;
+    int enable_patch1;
 } obe_input_t;
 
 /**** Stream Formats ****/
