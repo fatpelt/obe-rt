@@ -67,6 +67,10 @@ static struct kl_histogram frame_interval;
 static int histogram_dump = 0;
 #endif
 
+#define container_of(ptr, type, member) ({          \
+    const typeof(((type *)0)->member)*__mptr = (ptr);    \
+             (type *)((char *)__mptr - offsetof(type, member)); })
+
 #define DECKLINK_VANC_LINES 100
 
 struct obe_to_decklink
@@ -283,6 +287,7 @@ typedef struct
     int enable_scte35;
     int enable_vanc_cache;
     int enable_bitstream_audio;
+    int enable_patch1;
 
     /* Output */
     int probe_success;
@@ -1292,6 +1297,24 @@ static int cb_all(void *callback_context, struct vanc_context_s *ctx, struct pac
 		}
 	}
 
+	decklink_opts_t *decklink_opts = container_of(decklink_ctx, decklink_opts_t, decklink_ctx);
+	if (OPTION_ENABLED(patch1) && decklink_ctx->vanchdl && pkt->did == 0x52 && pkt->dbnsdid == 0x01) {
+
+		/* Patch#1 -- SCTE104 VANC appearing in a non-standard DID.
+		 * Modify the DID to reflect traditional SCTE104 and re-parse.
+		 * Any potential multi-entrant libklvanc issues here? No now, future probably yes.
+		 */
+
+		/* DID 0x62 SDID 01 : 0000 03ff 03ff 0162 0101 0217 01ad 0115 */
+		pkt->raw[3] = 0x241;
+		pkt->raw[4] = 0x107;
+		int ret = vanc_packet_parse(decklink_ctx->vanchdl, pkt->lineNr, pkt->raw, pkt->rawLengthWords);
+		if (ret < 0) {
+			/* No VANC on this line */
+			fprintf(stderr, "%s() patched VANC for did 0x52 failed\n", __func__);
+		}
+	}
+
 	return 0;
 }
 
@@ -1401,8 +1424,7 @@ static int open_card( decklink_opts_t *decklink_opts )
         if (smpte2038_packetizer_alloc(&decklink_ctx->smpte2038_ctx) < 0) {
             fprintf(stderr, "Unable to allocate a SMPTE2038 context.\n");
         }
-    } else
-	callbacks.all = NULL;
+    }
 
     for (int i = 0; i < MAX_AUDIO_PAIRS; i++) {
         struct audio_pair_s *pair = &decklink_ctx->audio_pairs[i];
@@ -1749,6 +1771,7 @@ static void *probe_stream( void *ptr )
     decklink_opts->enable_scte35 = user_opts->enable_scte35;
     decklink_opts->enable_vanc_cache = user_opts->enable_vanc_cache;
     decklink_opts->enable_bitstream_audio = user_opts->enable_bitstream_audio;
+    decklink_opts->enable_patch1 = user_opts->enable_patch1;
 
     decklink_opts->probe = non_display_parser->probe = 1;
 
@@ -1963,6 +1986,7 @@ static void *open_input( void *ptr )
     decklink_opts->enable_scte35 = user_opts->enable_scte35;
     decklink_opts->enable_vanc_cache = user_opts->enable_vanc_cache;
     decklink_opts->enable_bitstream_audio = user_opts->enable_bitstream_audio;
+    decklink_opts->enable_patch1 = user_opts->enable_patch1;
 
     decklink_ctx = &decklink_opts->decklink_ctx;
 
