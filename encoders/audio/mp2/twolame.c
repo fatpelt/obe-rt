@@ -32,8 +32,8 @@
 
 #define LOCAL_DEBUG 0
 
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-#include <libklmonitoring/klmonitoring.h>
+#if WANT_HISTOGRAMS
+#include "obe/histogram.h"
 #endif
 
 static void *start_encoder_mp2( void *ptr )
@@ -42,10 +42,9 @@ static void *start_encoder_mp2( void *ptr )
     printf("%s()\n", __func__);
 #endif
 
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-    struct kl_histogram audio_encode;
-    int histogram_dump = 0;
-    kl_histogram_reset(&audio_encode, "audio frame encode", KL_BUCKET_VIDEO);
+#if WANT_HISTOGRAMS
+    struct ltn_histogram_s *hst_filter;
+    ltn_histogram_alloc_video_defaults(&hst_filter, "audio frame encode");
 #endif
     obe_aud_enc_params_t *enc_params = ptr;
     obe_t *h = enc_params->h;
@@ -183,18 +182,15 @@ static void *start_encoder_mp2( void *ptr )
 
         avresample_read( avr, (uint8_t**)&audio_buf, avresample_available( avr ) );
 
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-        kl_histogram_sample_begin(&audio_encode);
+#if WANT_HISTOGRAMS
+        ltn_histogram_sample_begin(hst_filter);
 #endif
         output_size = twolame_encode_buffer_float32_interleaved( tl_opts, audio_buf, raw_frame->audio_frame.num_samples, output_buf, MP2_AUDIO_BUFFER_SIZE );
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-        kl_histogram_sample_complete(&audio_encode);
-        if (histogram_dump++ > 240) {
-                histogram_dump = 0;
+#if WANT_HISTOGRAMS
+        ltn_histogram_sample_end(hst_filter);
 #if PRINT_HISTOGRAMS
-                kl_histogram_printf(&audio_encode);
+        ltn_histogram_interval_print(STDOUT_FILENO, hst_filter, 4);
 #endif
-        }
 #endif
 
         if( output_size < 0 )
@@ -237,6 +233,10 @@ static void *start_encoder_mp2( void *ptr )
     }
 
 end:
+#if WANT_HISTOGRAMS
+    ltn_histogram_free(hst_filter);
+#endif
+
     if( output_buf )
         free( output_buf );
 

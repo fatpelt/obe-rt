@@ -25,11 +25,10 @@
 #include "encoders/video/video.h"
 #include <libavutil/mathematics.h>
 
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-#include <libklmonitoring/klmonitoring.h>
-static struct kl_histogram frame_encode;
-static struct kl_histogram gop_encode;
-static int histogram_dump = 0;
+#if WANT_HISTOGRAMS
+#include "obe/histogram.h"
+static struct ltn_histogram_s *vslice_encode;
+static struct ltn_histogram_s *gop_encode;
 #endif
 
 static void x264_logger( void *p_unused, int i_level, const char *psz_fmt, va_list arg )
@@ -123,11 +122,10 @@ printf("pic->img.i_csp = %d [%s] bits = %d\n",
 
 static void *start_encoder( void *ptr )
 {
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-    kl_histogram_reset(&frame_encode, "video frame encode", KL_BUCKET_VIDEO);
-    kl_histogram_reset(&gop_encode, "GOP compression time", KL_BUCKET_VIDEO);
-    //kl_histogram_rrd_gauge_enable(&gop_encode, "/tmp/gopcompression.rrd", "X264 GOP Compression");
-    kl_histogram_cumulative_initialize(&gop_encode);
+#if WANT_HISTOGRAMS
+    ltn_histogram_alloc_video_defaults(&vslice_encode, "video v-slice encode");
+    ltn_histogram_alloc_video_defaults(&gop_encode, "GOP compression time");
+    ltn_histogram_cumulative_initialize(gop_encode);
 #endif
 
     obe_vid_enc_params_t *enc_params = ptr;
@@ -281,14 +279,14 @@ printf("Malloc failed\n");
             pthread_mutex_unlock( &h->enc_smoothing_queue.mutex );
         }
 
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-	kl_histogram_sample_begin(&frame_encode);
-        kl_histogram_cumulative_begin(&gop_encode);
+#if WANT_HISTOGRAMS
+	ltn_histogram_sample_begin(vslice_encode);
+        ltn_histogram_cumulative_begin(gop_encode);
 #endif
         frame_size = x264_encoder_encode( s, &nal, &i_nal, &pic, &pic_out );
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-	kl_histogram_sample_complete(&frame_encode);
-        kl_histogram_cumulative_complete(&gop_encode);
+#if WANT_HISTOGRAMS
+	ltn_histogram_sample_end(vslice_encode);
+        ltn_histogram_cumulative_end(gop_encode);
 
 static int fc = 0;
 for (int m = 0; m < i_nal; m++) {
@@ -301,19 +299,17 @@ for (int m = 0; m < i_nal; m++) {
             */
            if (fc == (enc_params->avc_param.i_threads * 60)) {
                fc = 0;
-               kl_histogram_cumulative_finalize(&gop_encode); 
-               kl_histogram_cumulative_initialize(&gop_encode); 
+               ltn_histogram_cumulative_finalize(gop_encode); 
+               ltn_histogram_cumulative_initialize(gop_encode); 
            }
         }
 }
 
-	if (histogram_dump++ > 240) {
-		histogram_dump = 0;
 #if PRINT_HISTOGRAMS
-		kl_histogram_printf(&frame_encode);
-		kl_histogram_printf(&gop_encode);
+	ltn_histogram_interval_print(STDOUT_FILENO, vslice_encode, 4);
+	ltn_histogram_interval_print(STDOUT_FILENO, gop_encode, 4);
+	ltn_histogram_summary_print(STDOUT_FILENO, gop_encode, 4, 50);
 #endif
-	}
 #endif
 
         arrival_time = raw_frame->arrival_time;
@@ -373,6 +369,11 @@ for (int m = 0; m < i_nal; m++) {
      }
 
 end:
+#if WANT_HISTOGRAMS
+    ltn_histogram_free(vslice_encode);
+    ltn_histogram_free(gop_encode);
+#endif
+
     if( s )
         x264_encoder_close( s );
     free( enc_params );

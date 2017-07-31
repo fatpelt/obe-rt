@@ -4,7 +4,7 @@ GIT_VERSION := $(shell git describe --abbrev=8 --dirty --always --tags)
 BLACKMAGIC_SDK_PATH = $(top_srcdir)/include/decklink-sdk
 
 # This will be ignored of libklmonitoring is not installed in the system.
-#HISTOGRAMS = -DPRINT_HISTOGRAMS=1
+#HISTOGRAMS  = -DWANT_HISTOGRAMS=1 -DPRINT_HISTOGRAMS=1
 
 CFLAGS += -Wall -DVERSION=\"$(VERSION)\" -DPROG="\"$(PACKAGE)\"" -D_FILE_OFFSET_BITS=64 -O3 \
 	-D_BSD_SOURCE $(HISTOGRAMS) \
@@ -73,3 +73,4 @@ obecli_LDFLAGS = vfilter.o x86_sdi.o
 libklvanc_noinst_includedir = $(includedir)
 
 noinst_HEADERS  = $(top_srcdir)/mux/mux.h
+noinst_HEADERS += $(top_srcdir)/obe/histogram.h

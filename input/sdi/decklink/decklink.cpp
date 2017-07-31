@@ -61,10 +61,9 @@ extern "C"
 #include <include/DeckLinkAPI.h>
 #include "include/DeckLinkAPIDispatch.cpp"
 
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-#include <libklmonitoring/klmonitoring.h>
-static struct kl_histogram frame_interval;
-static int histogram_dump = 0;
+#if WANT_HISTOGRAMS
+#include "obe/histogram.h"
+static struct ltn_histogram_s *hst_filter;
 #endif
 
 #define container_of(ptr, type, member) ({          \
@@ -758,14 +757,11 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
 
     if( videoframe )
     {
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-        kl_histogram_update(&frame_interval);
-        if (histogram_dump++ > 240) {
-                histogram_dump = 0;
+#if WANT_HISTOGRAMS
+        ltn_histogram_interval_update(hst_filter);
 #if PRINT_HISTOGRAMS
-                kl_histogram_printf(&frame_interval);
+        ltn_histogram_interval_print(STDOUT_FILENO, hst_filter, 4);
 #endif
-        }
 #endif
 
         if( videoframe->GetFlags() & bmdFrameHasNoInputSource )
@@ -1135,6 +1131,10 @@ static void close_card( decklink_opts_t *decklink_opts )
     if( decklink_ctx->avr )
         avresample_free( &decklink_ctx->avr );
 
+#if WANT_HISTOGRAMS
+    ltn_histogram_free(hst_filter);
+#endif
+
 }
 
 /* VANC Callbacks */
@@ -1380,8 +1380,8 @@ static void * detector_callback(void *user_context,
 
 static int open_card( decklink_opts_t *decklink_opts )
 {
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-    kl_histogram_reset(&frame_interval, "video frame intervals", KL_BUCKET_VIDEO);
+#if WANT_HISTOGRAMS
+    ltn_histogram_alloc_video_defaults(&hst_filter, "video frame arrival intervals");
 #endif
     decklink_ctx_t *decklink_ctx = &decklink_opts->decklink_ctx;
     int         found_mode;

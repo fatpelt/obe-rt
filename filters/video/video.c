@@ -31,10 +31,9 @@
 #include "x86/vfilter.h"
 #include "input/sdi/sdi.h"
 
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-#include <libklmonitoring/klmonitoring.h>
-static struct kl_histogram filter_encode;
-static int histogram_dump = 0;
+#if WANT_HISTOGRAMS
+#include "obe/histogram.h"
+static struct ltn_histogram_s *hst_filter;
 #endif
 
 
@@ -688,8 +687,8 @@ static int encapsulate_user_data( obe_raw_frame_t *raw_frame, obe_int_input_stre
 
 static void *start_filter_video( void *ptr )
 {
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-    kl_histogram_reset(&filter_encode, "video frame filter", KL_BUCKET_VIDEO);
+#if WANT_HISTOGRAMS
+    ltn_histogram_alloc_video_defaults(&hst_filter, "video frame filter");
 #endif
 
     obe_vid_filter_params_t *filter_params = ptr;
@@ -730,8 +729,8 @@ static void *start_filter_video( void *ptr )
 //PRINT_OBE_IMAGE(&raw_frame->img, "VIDEO FILTER  PRE");
         pthread_mutex_unlock( &filter->queue.mutex );
 
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-        kl_histogram_sample_begin(&filter_encode);
+#if WANT_HISTOGRAMS
+        ltn_histogram_sample_begin(hst_filter);
 #endif
         /* TODO: scale 8-bit to 10-bit
          * TODO: convert from 4:2:0 to 4:2:2 */
@@ -769,14 +768,11 @@ static void *start_filter_video( void *ptr )
         if( encapsulate_user_data( raw_frame, input_stream ) < 0 )
             goto end;
 
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-        kl_histogram_sample_complete(&filter_encode);
-        if (histogram_dump++ > 240) {
-                histogram_dump = 0;
+#if WANT_HISTOGRAMS
+        ltn_histogram_sample_end(hst_filter);
 #if PRINT_HISTOGRAMS
-                kl_histogram_printf(&filter_encode);
+        ltn_histogram_interval_print(STDOUT_FILENO, hst_filter, 4);
 #endif
-        }
 #endif
 
         /* If SAR, on an SD stream, has not been updated by AFD or WSS, set to default 4:3
@@ -791,6 +787,10 @@ static void *start_filter_video( void *ptr )
 //PRINT_OBE_IMAGE(&raw_frame->img, "VIDEO FILTER POST");
         add_to_encode_queue( h, raw_frame, 0 );
     }
+
+#if WANT_HISTOGRAMS
+    ltn_histogram_free(hst_filter);
+#endif
 
 end:
     if( vfilt )
