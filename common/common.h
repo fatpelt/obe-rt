@@ -41,6 +41,7 @@
 #include <sys/time.h>
 #include <time.h>
 #include "obe.h"
+#include "obe/histogram.h"
 
 #define MAX_DEVICES 1
 #define MAX_STREAMS 40
@@ -193,6 +194,10 @@ typedef struct
     obe_output_stream_t *output_streams;
 
     obe_input_stream_t *probed_streams;
+
+    /* Performance monitoring. */
+    struct ltn_histogram_s *video_frame_intervals;
+    struct ltn_histogram_s *audio_frame_intervals;
 } obe_device_t;
 
 typedef struct
@@ -376,6 +381,8 @@ typedef struct
     obe_queue_t queue;
     int cancel_thread;
 
+    /* Performance monitoring. */
+    struct ltn_histogram_s *filter_processing;
 } obe_filter_t;
 #define PRINT_OBE_FILTER(f, prefix) { \
 	printf("%s: obj = %p, num_ids=%d list[0]=%d\n", \
@@ -396,6 +403,16 @@ typedef struct
 
     /* HE-AAC and E-AC3 */
     int num_samples;
+
+    /* Performance monitoring. */
+    /* Video */
+    struct ltn_histogram_s *video_frame_encode;
+    struct ltn_histogram_s *video_gop_encode;
+    int                     video_histogram_fc;
+
+    /* Audio */
+    struct ltn_histogram_s *audio_frame_encode;
+
 } obe_encoder_t;
 
 typedef struct

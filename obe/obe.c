@@ -65,6 +65,13 @@ void destroy_device( obe_device_t *device )
         free( device->probed_streams );
     if( device->location )
         free( device->location );
+
+    if (device->video_frame_intervals)
+        ltn_histogram_free(device->video_frame_intervals);
+
+    if (device->audio_frame_intervals)
+        ltn_histogram_free(device->audio_frame_intervals);
+
     free( device );
 }
 
@@ -292,6 +299,9 @@ static void destroy_filter( obe_filter_t *filter )
 
     obe_destroy_queue( &filter->queue );
 
+    if (filter->filter_processing)
+        ltn_histogram_free(filter->filter_processing);
+
     free( filter->stream_id_list );
     free( filter );
 }
@@ -331,6 +341,15 @@ static void destroy_encoder( obe_encoder_t *encoder )
 
     if( encoder->encoder_params )
         free( encoder->encoder_params );
+
+    if (encoder->video_frame_encode)
+        ltn_histogram_free(encoder->video_frame_encode);
+
+    if (encoder->video_gop_encode)
+        ltn_histogram_free(encoder->video_gop_encode);
+
+    if (encoder->audio_frame_encode)
+        ltn_histogram_free(encoder->audio_frame_encode);
 
     free( encoder );
 }
@@ -1067,6 +1086,11 @@ int obe_start( obe_t *h )
                 vid_enc_params->encoder = h->encoders[h->num_encoders];
                 h->encoders[h->num_encoders]->is_video = 1;
 
+                /* Initialize the video encoder - performance montioring histograms. */
+                ltn_histogram_alloc_video_defaults(&h->encoders[h->num_encoders]->video_frame_encode, "x264 video frame compression time");
+                ltn_histogram_alloc_video_defaults(&h->encoders[h->num_encoders]->video_gop_encode, "x264 video GOP compression time");
+                ltn_histogram_cumulative_initialize(h->encoders[h->num_encoders]->video_gop_encode);
+
                 memcpy( &vid_enc_params->avc_param, &h->output_streams[i].avc_param, sizeof(x264_param_t) );
                 if( pthread_create( &h->encoders[h->num_encoders]->encoder_thread, NULL, x264_encoder.start_encoder, (void*)vid_enc_params ) < 0 )
                 {
@@ -1087,6 +1111,7 @@ int obe_start( obe_t *h )
                 aud_enc_params->encoder = h->encoders[h->num_encoders];
                 aud_enc_params->stream = &h->output_streams[i];
 
+                ltn_histogram_alloc_video_defaults(&h->encoders[h->num_encoders]->audio_frame_encode, "audio ac3 syncframe passthrough");
                 if (pthread_create(&h->encoders[h->num_encoders]->encoder_thread, NULL, ac3bitstream_encoder.start_encoder, (void*)aud_enc_params ) < 0 )
                 {
                     fprintf(stderr, "Couldn't create ac3bitstream encode thread\n");
@@ -1137,6 +1162,7 @@ int obe_start( obe_t *h )
                 else
                     h->output_streams[i].ts_opts.frames_per_pes = aud_enc_params->frames_per_pes = 1;
 
+                ltn_histogram_alloc_video_defaults(&h->encoders[h->num_encoders]->audio_frame_encode, "pcm audio frame compression time");
                 if( pthread_create( &h->encoders[h->num_encoders]->encoder_thread, NULL, audio_encoder.start_encoder, (void*)aud_enc_params ) < 0 )
                 {
                     fprintf( stderr, "Couldn't create encode thread \n" );
@@ -1226,6 +1252,8 @@ int obe_start( obe_t *h )
                 vid_filter_params->target_csp = X264_CSP_I422;
 #endif
 
+                ltn_histogram_alloc_video_defaults(&h->filters[h->num_filters]->filter_processing, "video frame filter processing");
+
                 if( pthread_create( &h->filters[h->num_filters]->filter_thread, NULL, video_filter.start_filter, vid_filter_params ) < 0 )
                 {
                     fprintf( stderr, "Couldn't create video filter thread \n" );
@@ -1278,6 +1306,8 @@ PRINT_OBE_FILTER(h->filters[h->num_filters], "AUDIO FILTER");
     input_params->output_streams = h->output_streams;
     input_params->audio_samples = num_samples;
 
+    ltn_histogram_alloc_video_defaults(&h->devices[0]->video_frame_intervals, "device video frame arrival intervals");
+    ltn_histogram_alloc_video_defaults(&h->devices[0]->audio_frame_intervals, "device audio frame arrival intervals");
     if( pthread_create( &h->devices[0]->device_thread, NULL, input.open_input, (void*)input_params ) < 0 )
     {
         fprintf( stderr, "Couldn't create input thread \n" );

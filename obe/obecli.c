@@ -1157,7 +1157,7 @@ static int show_help( char *command, obecli_command_t *child )
 
     H0( "show - Show supported items\n" );
     for( int i = 0; show_commands[i].name != 0; i++ )
-        H0( "       %-*s %-*s  - %s \n", 8, show_commands[i].name, 21, show_commands[i].child_opts, show_commands[i].description );
+        H0( "       %-*s %-*s  - %s \n", 10, show_commands[i].name, 21, show_commands[i].child_opts, show_commands[i].description );
 
     H0( "\n" );
 
@@ -1258,6 +1258,41 @@ static int show_outputs( char *command, obecli_command_t *child )
         i++;
     }
 
+    return 0;
+}
+
+static void display_histogram(const char *command, int showall, struct ltn_histogram_s *hg)
+{
+    if (!hg)
+        return;
+    if (showall || (!showall && ltn_histogram_name_isequal(hg, command)))  {
+        ltn_histogram_interval_print(STDOUT_FILENO, hg, 0);
+        return;
+    }
+}
+
+static int show_histograms(char *command, obecli_command_t *child)
+{
+    int showall = 1;
+
+    if (strlen(command) > 0) {
+        showall = 0;
+    }
+
+    for (int i = 0; i < cli.h->num_devices; i++) {
+	display_histogram(command, showall, cli.h->devices[i]->video_frame_intervals);
+	display_histogram(command, showall, cli.h->devices[i]->audio_frame_intervals);
+    }
+
+    for (int i = 0; i < cli.h->num_filters; i++) {
+	display_histogram(command, showall, cli.h->filters[i]->filter_processing);
+    }
+
+    for (int i = 0; i < cli.h->num_encoders; i++) {
+	display_histogram(command, showall, cli.h->encoders[i]->video_frame_encode);
+	display_histogram(command, showall, cli.h->encoders[i]->video_gop_encode);
+	display_histogram(command, showall, cli.h->encoders[i]->audio_frame_encode);
+    }
     return 0;
 }
 

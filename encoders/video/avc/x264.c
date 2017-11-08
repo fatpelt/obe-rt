@@ -25,13 +25,6 @@
 #include "encoders/video/video.h"
 #include <libavutil/mathematics.h>
 
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-#include <libklmonitoring/klmonitoring.h>
-static struct kl_histogram frame_encode;
-static struct kl_histogram gop_encode;
-static int histogram_dump = 0;
-#endif
-
 static void x264_logger( void *p_unused, int i_level, const char *psz_fmt, va_list arg )
 {
     if( i_level <= X264_LOG_INFO )
@@ -123,13 +116,6 @@ printf("pic->img.i_csp = %d [%s] bits = %d\n",
 
 static void *start_encoder( void *ptr )
 {
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-    kl_histogram_reset(&frame_encode, "video frame encode", KL_BUCKET_VIDEO);
-    kl_histogram_reset(&gop_encode, "GOP compression time", KL_BUCKET_VIDEO);
-    //kl_histogram_rrd_gauge_enable(&gop_encode, "/tmp/gopcompression.rrd", "X264 GOP Compression");
-    kl_histogram_cumulative_initialize(&gop_encode);
-#endif
-
     obe_vid_enc_params_t *enc_params = ptr;
     obe_t *h = enc_params->h;
     obe_encoder_t *encoder = enc_params->encoder;
@@ -281,39 +267,81 @@ printf("Malloc failed\n");
             pthread_mutex_unlock( &h->enc_smoothing_queue.mutex );
         }
 
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-	kl_histogram_sample_begin(&frame_encode);
-        kl_histogram_cumulative_begin(&gop_encode);
-#endif
-        frame_size = x264_encoder_encode( s, &nal, &i_nal, &pic, &pic_out );
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-	kl_histogram_sample_complete(&frame_encode);
-        kl_histogram_cumulative_complete(&gop_encode);
+	ltn_histogram_sample_begin(encoder->video_frame_encode);
+        ltn_histogram_cumulative_begin(encoder->video_gop_encode);
 
-static int fc = 0;
-for (int m = 0; m < i_nal; m++) {
-	//printf("fc = %d I:%d %d\n", fc++, nal[m].i_type, nal[m].i_payload);
-        if (nal[m].i_type == NAL_SLICE) {
-           fc++;
-           /* Four MB slices per frame, and 60fps */
-           /* TODO: Warning, if the framerate is not 60fps then this calculation breaks.
-            * I've been manually adjusting it for 60 vs 30 content when testing.
-            */
-           if (fc == (enc_params->avc_param.i_threads * 60)) {
-               fc = 0;
-               kl_histogram_cumulative_finalize(&gop_encode); 
-               kl_histogram_cumulative_initialize(&gop_encode); 
-           }
-        }
+        frame_size = x264_encoder_encode( s, &nal, &i_nal, &pic, &pic_out );
+
+        ltn_histogram_cumulative_end(encoder->video_gop_encode);
+	ltn_histogram_sample_end(encoder->video_frame_encode);
+
+#if 0
+    NAL_UNKNOWN     = 0,
+    NAL_SLICE       = 1,
+    NAL_SLICE_DPA   = 2,
+    NAL_SLICE_DPB   = 3,
+    NAL_SLICE_DPC   = 4,
+    NAL_SLICE_IDR   = 5,    /* ref_idc != 0 */
+    NAL_SEI         = 6,    /* ref_idc == 0 */
+    NAL_SPS         = 7,
+    NAL_PPS         = 8,
+    NAL_AUD         = 9,
+    NAL_FILLER      = 12,
+
+static zz = 0;
+static time_t lasttime = 0;
+#endif
+
+        for (int m = 0; m < i_nal; m++) {
+#if 0
+switch (nal[m].i_type) {
+case NAL_SLICE:
+case NAL_SLICE_DPA:
+case NAL_SLICE_DPB:
+case NAL_SLICE_DPC:
+case NAL_SLICE_IDR:
+#if 0
+            printf("fc = %d I:%d %d\n", encoder->video_histogram_fc,
+		nal[m].i_type,
+            nal[m].i_payload);
+#endif
+break;
 }
 
-	if (histogram_dump++ > 240) {
-		histogram_dump = 0;
-#if PRINT_HISTOGRAMS
-		kl_histogram_printf(&frame_encode);
-		kl_histogram_printf(&gop_encode);
+if (nal[m].i_type == NAL_PPS) {
+time_t now;
+//printf("PPS at %d\n", now);
+}
 #endif
-	}
+            if (nal[m].i_type == NAL_SLICE) {
+//zz++;
+                encoder->video_histogram_fc++;
+                /* Four MB slices per frame, and 60fps */
+                /* TODO: Warning, if the framerate is not 60fps then this calculation breaks.
+                 * I've been manually adjusting it for 60 vs 30 content when testing.
+                 */
+#if 0
+time_t now;
+time(&now);
+if (now != lasttime) {
+lasttime = now;
+//printf("count = %d\n", zz);
+zz = 0;
+//printf("enc_params->avc_param.i_threads = %d %d\n", enc_params->avc_param.i_threads, now);
+}
+#endif
+                if (encoder->video_histogram_fc == (enc_params->avc_param.i_threads *60)) {
+                    encoder->video_histogram_fc = 0;
+                    ltn_histogram_cumulative_finalize(encoder->video_gop_encode); 
+                    ltn_histogram_cumulative_initialize(encoder->video_gop_encode); 
+                }
+             }
+        }
+
+#if PRINT_HISTOGRAMS
+        /* output histogram content every four seconds. */
+        ltn_histogram_interval_print(STDOUT_FILENO, encoder->video_frame_encode, 4);
+        ltn_histogram_interval_print(STDOUT_FILENO, encoder->video_gop_encode, 4);
 #endif
 
         arrival_time = raw_frame->arrival_time;

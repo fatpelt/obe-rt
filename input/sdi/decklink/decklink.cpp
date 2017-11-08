@@ -32,13 +32,10 @@
 #define WRITE_OSD_VALUE 0
 #define READ_OSD_VALUE 0
 
-#if HAVE_LIBKLMONITORING_KLMONITORING_H
 #define KL_PRBS_INPUT 0
 
 #if KL_PRBS_INPUT
 #include <libklmonitoring/kl-prbs.h>
-#endif
-
 #endif
 
 extern "C"
@@ -60,12 +57,6 @@ extern "C"
 #include <assert.h>
 #include <include/DeckLinkAPI.h>
 #include "include/DeckLinkAPIDispatch.cpp"
-
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-#include <libklmonitoring/klmonitoring.h>
-static struct kl_histogram frame_interval;
-static int histogram_dump = 0;
-#endif
 
 #define container_of(ptr, type, member) ({          \
     const typeof(((type *)0)->member)*__mptr = (ptr);    \
@@ -758,15 +749,12 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
 
     if( videoframe )
     {
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-        kl_histogram_update(&frame_interval);
-        if (histogram_dump++ > 240) {
-                histogram_dump = 0;
+        if (decklink_ctx->device && decklink_ctx->device->video_frame_intervals) {
+            ltn_histogram_interval_update(decklink_ctx->device->video_frame_intervals);
 #if PRINT_HISTOGRAMS
-                kl_histogram_printf(&frame_interval);
+            ltn_histogram_interval_print(STDOUT_FILENO, decklink_ctx->device->video_frame_intervals, 4);
 #endif
         }
-#endif
 
         if( videoframe->GetFlags() & bmdFrameHasNoInputSource )
         {
@@ -1032,6 +1020,12 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
     } /* if video frame */
 
     if (audioframe) {
+        if (decklink_ctx->device && decklink_ctx->device->audio_frame_intervals) {
+            ltn_histogram_interval_update(decklink_ctx->device->audio_frame_intervals);
+#if PRINT_HISTOGRAMS
+            ltn_histogram_interval_print(STDOUT_FILENO, decklink_ctx->device->audio_frame_intervals, 4);
+#endif
+        }
         if(OPTION_ENABLED_(bitstream_audio)) {
             for (int i = 0; i < MAX_AUDIO_PAIRS; i++) {
                 audioframe->GetBytes(&frame_bytes);
@@ -1380,9 +1374,6 @@ static void * detector_callback(void *user_context,
 
 static int open_card( decklink_opts_t *decklink_opts )
 {
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-    kl_histogram_reset(&frame_interval, "video frame intervals", KL_BUCKET_VIDEO);
-#endif
     decklink_ctx_t *decklink_ctx = &decklink_opts->decklink_ctx;
     int         found_mode;
     int         ret = 0;

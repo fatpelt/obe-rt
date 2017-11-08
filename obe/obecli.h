@@ -56,6 +56,7 @@ static int show_decoders( char *command, obecli_command_t *child );
 static int show_encoders( char *command, obecli_command_t *child );
 static int show_help( char *command, obecli_command_t *child );
 static int show_input( char *command, obecli_command_t *child );
+static int show_histograms(char *command, obecli_command_t *child);
 static int show_inputs( char *command, obecli_command_t *child );
 static int show_muxers( char *command, obecli_command_t *child );
 static int show_output( char *command, obecli_command_t *child );
@@ -133,6 +134,7 @@ static obecli_command_t show_commands[] =
     { "muxers",   "",  "Show supported muxers",      show_muxers,   NULL },
     { "output",   "streams",  "Show output streams", show_output,   NULL },
     { "outputs",  "",  "Show supported outputs",     show_outputs,  NULL },
+    { "histograms", "", "Show running histograms",    show_histograms,  NULL },
     { 0 }
 };
 
