@@ -202,12 +202,20 @@ static void * detector_callback(void *user_context,
 	}
 
 #if CRC_FIX
-	/* If the last video frame PTS was more than 2000 ms different to our PTS, self
-	 * correct.
+	/* If the last video frame PTS was more than 150ms different to our PTS,
+	 * then a good chance upstream lost frames. We'll rebase to the new
+	 * timebase.
 	 */
 	uint64_t x = abs((frm_pts / 27000) - (cur_pts / 27000));
-	if (x > 250) {
+	if (x > 150) {
 		cur_pts = frm_pts;
+#if 0
+		/* Audio will render slightly later than video, becauses we're
+		 * running the audio through a N deep ringbuffer for reframing.
+		 * Adding the audio forwards by approximately 32ms (one frame of ac3).
+		 */
+		cur_pts += (3 * PTS_TICKS_TO_27MHZ(2880));
+#endif
 	}
 
 #else
