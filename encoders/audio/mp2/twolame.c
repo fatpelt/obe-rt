@@ -36,6 +36,8 @@
 #include <libklmonitoring/klmonitoring.h>
 #endif
 
+static int64_t frm_pts = -1;
+
 static void *start_encoder_mp2( void *ptr )
 {
 #if LOCAL_DEBUG
@@ -148,6 +150,8 @@ static void *start_encoder_mp2( void *ptr )
         raw_frame = encoder->queue.queue[0];
         pthread_mutex_unlock( &encoder->queue.mutex );
 
+        frm_pts = raw_frame->pts;
+
 #if LOCAL_DEBUG
         /* Send any audio to the AC3 frame slicer.
          * Push the buffer starting at the channel containing bitstream, and span 2 channels,
@@ -227,6 +231,15 @@ static void *start_encoder_mp2( void *ptr )
                 goto end;
             }
             av_fifo_generic_read( fifo, coded_frame->data, frame_size, NULL );
+
+            /* If the input raw PTS is more than 150ms ahead of the codecs
+             * pts, then upstream lost frames, rebase on the new PTS.
+             */
+            uint64_t x = abs((frm_pts / 27000) - (cur_pts / 27000));
+            if (x > 150) {
+                cur_pts = frm_pts;
+            }
+
             coded_frame->pts = cur_pts;
             coded_frame->random_access = 1; /* Every frame output is a random access point */
 
