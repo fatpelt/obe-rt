@@ -343,7 +343,8 @@ static void calculate_audio_sfc_window(decklink_opts_t *opts)
 
     opts->audio_sfc_min = (samplerate * ((double)1 - marginpct)) / fps;
     opts->audio_sfc_max = (samplerate * ((double)1 + marginpct)) / fps;
-    //printf("%s() audio_sfc_min/max = %d/%d\n", __func__, opts->audio_sfc_min, opts->audio_sfc_max);
+    printf("%s() audio_sfc_min/max = %d/%d\n", __func__, opts->audio_sfc_min, opts->audio_sfc_max);
+    kllog("%s() audio_sfc_min/max = %d/%d\n", __func__, opts->audio_sfc_min, opts->audio_sfc_max);
 }
 
 static int transmit_pes_to_muxer(decklink_ctx_t *decklink_ctx, uint8_t *buf, uint32_t byteCount);
