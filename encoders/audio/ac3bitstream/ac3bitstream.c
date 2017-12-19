@@ -230,13 +230,6 @@ static void * detector_callback(void *user_context,
 		time_t now; time(&now);
 		printf("\nRESETTING TIME ********************************************************* @ %s", ctime(&now));
 #endif
-#if 0
-		/* Audio will render slightly later than video, becauses we're
-		 * running the audio through a N deep ringbuffer for reframing.
-		 * Adding the audio forwards by approximately 32ms (one frame of ac3).
-		 */
-		cur_pts += (3 * PTS_TICKS_TO_27MHZ(2880));
-#endif
 	}
 
 	cf->pts = cur_pts;
