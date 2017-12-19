@@ -161,9 +161,7 @@ static void * detector_callback(void *user_context,
                 fprintf(stderr, "[AC3] Detected SMPTE337 datamode %d, we don't support it.", datamode);
 		return 0;
 	}
-#define CRC_FIX 1
 
-#if CRC_FIX
 	/* Increment by 2880 90KHz clock ticks, expressed in 27MHz (SCR rate).
   	 * Or, 32ms of audio, in each packet, matching all of the other broadcaster
   	 * streams. We need to do this regardless if whether the incoming AC3BITSTREAM
@@ -174,7 +172,6 @@ static void * detector_callback(void *user_context,
   	 */
 #define PTS_TICKS_TO_27MHZ(n)  ((n) * 300)
 	cur_pts += PTS_TICKS_TO_27MHZ(2880);
-#endif
 
 	if (payload_byteCount == 0) {
 		/* No payload, an empty packet from a confused MRD4400. Discard. */
@@ -202,7 +199,6 @@ static void * detector_callback(void *user_context,
 		return 0;
 	}
 
-#if CRC_FIX
 	/* If the last video frame PTS was more than 150ms different to our PTS,
 	 * then a good chance upstream lost frames. We'll rebase to the new
 	 * timebase.
@@ -243,14 +239,6 @@ static void * detector_callback(void *user_context,
 #endif
 	}
 
-#else
-	/* Increment by 2880 90KHz clock ticks, expressed in 27MHz (SCR rate).
-  	 * Or, 32ms of audio, in each packet, matching all of the other broadcaster
-  	 * streams.
-  	 */
-#define PTS_TICKS_TO_27MHZ(n)  ((n) * 300)
-	cur_pts += PTS_TICKS_TO_27MHZ(2880);
-#endif
 	cf->pts = cur_pts;
 	cf->random_access = 1; /* Every frame output is a random access point */
 	memcpy(cf->data, payload, payload_byteCount);
@@ -305,13 +293,7 @@ static void *start_encoder_ac3bitstream(void *ptr)
 		pthread_mutex_unlock(&encoder->queue.mutex);
 
 		/* Cache the latest PTS, first time only. After this, increment by a fixed value. */
-#if CRC_FIX
 		frm_pts = frm->pts;
-#else
-		if (cur_pts == -1) {
-			cur_pts = frm->pts;
-		}
-#endif
 
 #if LOCAL_DEBUG
 		/* Send any audio to the AC3 frame slicer.
