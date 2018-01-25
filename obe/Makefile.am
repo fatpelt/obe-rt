@@ -6,7 +6,7 @@ BLACKMAGIC_SDK_PATH = $(top_srcdir)/include/decklink-sdk
 # This will be ignored of libklmonitoring is not installed in the system.
 #HISTOGRAMS = -DPRINT_HISTOGRAMS=1
 
-CFLAGS += -Wall -DVERSION=\"$(VERSION)\" -DPROG="\"$(PACKAGE)\"" -D_FILE_OFFSET_BITS=64 -O3 \
+CFLAGS += -g -Wall -DVERSION=\"$(VERSION)\" -DPROG="\"$(PACKAGE)\"" -D_FILE_OFFSET_BITS=64 -O3 \
 	-D_BSD_SOURCE $(HISTOGRAMS) \
 	-I$(BLACKMAGIC_SDK_PATH) \
 	-I$(top_srcdir) \
@@ -18,12 +18,6 @@ LDFLAGS += -lpthread -lz -lx264 -lyuv
 LDFLAGS += -lavformat -lavcodec -lavresample -ldl -lasound -lfdk-aac -lbz2 -lz -lswscale -lavutil -lm
 LDFLAGS += -lklscte35 -lklvanc
 LDFLAGS += -ltwolame -lmpegts -lstdc++ -ldl -lzvbi -lreadline
-
-#OK
-
-if DEBUG
-	CFLAGS += -g
-endif
 
 CXXFLAGS = $(CFLAGS)
 
