@@ -128,6 +128,8 @@ printf("%s() raw_frame->input_stream_id = %d, num_encoders = %d\n", __func__, ra
             if (raw_frame->input_stream_id != h->encoders[i]->output_stream_id)
                 continue;
 
+            /* PTS is the standard 27MHz clock. Adjust by ms. */
+            raw_frame->pts += ((int64_t)output_stream->audio_offset_ms * (OBE_CLOCK/1000));
 #if LOCAL_DEBUG
             printf("%s() adding frame for input %d to encoder output %d\n", __func__,
                 raw_frame->input_stream_id, h->encoders[i]->output_stream_id);
