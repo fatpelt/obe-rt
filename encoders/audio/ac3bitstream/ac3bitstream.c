@@ -160,6 +160,12 @@ static void * detector_callback(void *user_context,
 		return 0;
 	}
 
+	if (payload_byteCount == 0) {
+		/* No payload, an empty packet from a confused MRD4400. Discard. */
+		fprintf(stderr, "[AC3] Detected empty payload from upstream, probable noisey signal, discarding.");
+		return 0;
+	}
+
 	/* The SMPTE337 slicers hands us a bitstream, not a word stream.
 	 * AC3 checksums are word based, so, yeah, not nice, switch the
 	 * endian, check the checksum and then flip it back.
