@@ -166,11 +166,12 @@ void add_device( obe_t *h, obe_device_t *device )
 }
 
 /** Add/Remove from queues */
-void obe_init_queue( obe_queue_t *queue )
+void obe_init_queue(obe_queue_t *queue, char *name)
 {
     pthread_mutex_init( &queue->mutex, NULL );
     pthread_cond_init( &queue->in_cv, NULL );
     pthread_cond_init( &queue->out_cv, NULL );
+    strcpy(&queue->name[0], name);
 }
 
 void obe_destroy_queue( obe_queue_t *queue )
@@ -994,9 +995,9 @@ int obe_start( obe_t *h )
     /* Setup mutexes and cond vars */
     pthread_mutex_init( &h->devices[0]->device_mutex, NULL );
     pthread_mutex_init( &h->drop_mutex, NULL );
-    obe_init_queue( &h->enc_smoothing_queue );
-    obe_init_queue( &h->mux_queue );
-    obe_init_queue( &h->mux_smoothing_queue );
+    obe_init_queue( &h->enc_smoothing_queue, "encoder smoothing" );
+    obe_init_queue( &h->mux_queue, "mux" );
+    obe_init_queue( &h->mux_smoothing_queue, "mux smoothing" );
     pthread_mutex_init( &h->obe_clock_mutex, NULL );
     pthread_cond_init( &h->obe_clock_cv, NULL );
 
@@ -1023,7 +1024,9 @@ int obe_start( obe_t *h )
     /* Open Output Threads */
     for( int i = 0; i < h->num_outputs; i++ )
     {
-        obe_init_queue( &h->outputs[i]->queue );
+        char n[64];
+        sprintf(n, "outputs #%d", i);
+        obe_init_queue( &h->outputs[i]->queue, n );
         output = ip_output;
 
         if( pthread_create( &h->outputs[i]->output_thread, NULL, output.open_output, (void*)h->outputs[i] ) < 0 )
@@ -1045,7 +1048,9 @@ int obe_start( obe_t *h )
                 fprintf( stderr, "Malloc failed \n" );
                 goto fail;
             }
-            obe_init_queue( &h->encoders[h->num_encoders]->queue );
+            char n[64];
+            sprintf(n, "output stream #%d", i);
+            obe_init_queue( &h->encoders[h->num_encoders]->queue, n);
             h->encoders[h->num_encoders]->output_stream_id = h->output_streams[i].output_stream_id;
 
             if( h->output_streams[i].stream_format == VIDEO_AVC )
@@ -1197,7 +1202,16 @@ int obe_start( obe_t *h )
             if( !h->filters[h->num_filters] )
                 goto fail;
 
-            obe_init_queue( &h->filters[h->num_filters]->queue );
+            char n[64];
+            if (input_stream->stream_type == STREAM_TYPE_VIDEO)
+                sprintf(n, "input stream #%d [VIDEO]", i);
+            else
+            if (input_stream->stream_type == STREAM_TYPE_AUDIO)
+                sprintf(n, "input stream #%d [AUDIO]", i);
+            else
+                sprintf(n, "input stream #%d [OTHER]", i);
+
+            obe_init_queue( &h->filters[h->num_filters]->queue, n );
 
             h->filters[h->num_filters]->num_stream_ids = 1;
             h->filters[h->num_filters]->stream_id_list = malloc( sizeof(*h->filters[h->num_filters]->stream_id_list) );

@@ -321,6 +321,7 @@ typedef struct
 
 typedef struct
 {
+    char name[128];
     void **queue;
     int  size;
 

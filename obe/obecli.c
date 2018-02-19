@@ -1134,6 +1134,43 @@ static int show_decoders( char *command, obecli_command_t *child )
     return 0;
 }
 
+static int show_queues(char *command, obecli_command_t *child)
+{
+    printf( "Global queues:\n" );
+
+    obe_filter_t *f = NULL;
+    obe_queue_t *q = NULL;
+
+    q = &cli.h->enc_smoothing_queue;
+    printf("name: %s depth: %d item(s)\n", q->name, q->size);
+    q = &cli.h->mux_queue;
+    printf("name: %s depth: %d item(s)\n", q->name, q->size);
+    q = &cli.h->mux_smoothing_queue;
+    printf("name: %s depth: %d item(s)\n", q->name, q->size);
+
+    printf( "Filter queues:\n" );
+    for (int i = 0; i < cli.h->num_filters; i++) {
+        f = cli.h->filters[i];
+        printf("name: %s depth: %d item(s)\n", f->queue.name, f->queue.size);
+    }
+
+    printf( "Output queues:\n" );
+    for (int i = 0; i < cli.h->num_outputs; i++) {
+        q = &cli.h->outputs[i]->queue;
+        printf("name: %s depth: %d item(s)\n", q->name, q->size);
+    }
+
+    printf( "Encoder queues:\n" );
+    for( int i = 0; i < cli.h->num_output_streams; i++ ) {
+        if (cli.h->output_streams[i].stream_action == STREAM_ENCODE ) {
+            q = &cli.h->encoders[i]->queue;
+            printf("name: %s depth: %d item(s)\n", q->name, q->size);
+        }
+    }
+
+    return 0;
+}
+
 static int show_encoders( char *command, obecli_command_t *child )
 {
     printf( "\nSupported Encoders: \n" );

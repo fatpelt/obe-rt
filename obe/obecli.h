@@ -67,6 +67,8 @@ static int show_output_streams( char *command, obecli_command_t *child );
 static int start_encode( char *command, obecli_command_t *child );
 static int stop_encode( char *command, obecli_command_t *child );
 
+static int show_queues(char *command, obecli_command_t *child);
+
 struct obecli_command_t
 {
     char *name;
@@ -133,6 +135,7 @@ static obecli_command_t show_commands[] =
     { "muxers",   "",  "Show supported muxers",      show_muxers,   NULL },
     { "output",   "streams",  "Show output streams", show_output,   NULL },
     { "outputs",  "",  "Show supported outputs",     show_outputs,  NULL },
+    { "queues",   "",  "Show queue metrics",         show_queues,   NULL },
     { 0 }
 };
 
