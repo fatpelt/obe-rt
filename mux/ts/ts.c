@@ -404,7 +404,7 @@ void *open_muxer( void *ptr )
             for( int i = 0; i < h->mux_queue.size; i++ )
             {
                 coded_frame = h->mux_queue.queue[i];
-                if( coded_frame->is_video )
+                if (coded_frame->type == CF_VIDEO)
                 {
                     video_found = 1;
                     video_dts = coded_frame->real_dts;
@@ -446,8 +446,8 @@ void *open_muxer( void *ptr )
             coded_frame = h->mux_queue.queue[i];
 
             if (h->verbose_bitmask & MUX__DQ_HEXDUMP) {
-                printf("coded_frame: output_stream_id = %d, is_video = %d, len = %6d -- ",
-                    coded_frame->output_stream_id, coded_frame->is_video, coded_frame->len);
+                printf("coded_frame: output_stream_id = %d, type = %d, len = %6d -- ",
+                    coded_frame->output_stream_id, coded_frame->type, coded_frame->len);
                     for (int x = 0; x < coded_frame->len; x++) {
                         printf("%02x ", *(coded_frame->data + x));
                         if (x > 8)
@@ -459,7 +459,7 @@ void *open_muxer( void *ptr )
             output_stream = get_output_mux_stream( mux_params, coded_frame->output_stream_id );
             // FIXME name
             int64_t rescaled_dts = coded_frame->pts - first_video_pts + first_video_real_pts;
-            if( coded_frame->is_video )
+            if (coded_frame->type == CF_VIDEO)
                 rescaled_dts = coded_frame->real_dts;
 
             //printf("\n stream-id %i ours: %"PRIi64" \n", coded_frame->output_stream_id, coded_frame->pts );
@@ -470,7 +470,7 @@ void *open_muxer( void *ptr )
                 frames[num_frames].size = coded_frame->len;
                 frames[num_frames].data = coded_frame->data;
                 frames[num_frames].pid = output_stream->ts_opts.pid;
-                if( coded_frame->is_video )
+                if (coded_frame->type == CF_VIDEO)
                 {
                     frames[num_frames].cpb_initial_arrival_time = coded_frame->cpb_initial_arrival_time;
                     frames[num_frames].cpb_final_arrival_time = coded_frame->cpb_final_arrival_time;

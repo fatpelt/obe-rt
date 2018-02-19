@@ -337,7 +337,7 @@ for (int m = 0; m < i_nal; m++) {
                 break;
             }
             memcpy( coded_frame->data, nal[0].p_payload, frame_size );
-            coded_frame->is_video = 1;
+            coded_frame->type = CF_VIDEO;
             coded_frame->len = frame_size;
 #if X264_BUILD < 148
             coded_frame->cpb_initial_arrival_time = pic_out.hrd_timing.cpb_initial_arrival_time;

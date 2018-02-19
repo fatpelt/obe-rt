@@ -182,6 +182,7 @@ static void * detector_callback(void *user_context,
 	}
 
 	cf->pts = cur_pts;
+	cf->type = CF_AUDIO;
 	cf->random_access = 1; /* Every frame output is a random access point */
 	memcpy(cf->data, payload, payload_byteCount);
 	cf->len = payload_byteCount;

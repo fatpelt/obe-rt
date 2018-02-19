@@ -410,10 +410,17 @@ typedef struct
     obe_queue_t queue;
 } obe_output_t;
 
+enum obe_coded_frame_type_e {
+  CF_UNDEFINED = 0,
+  CF_VIDEO,
+  CF_AUDIO,
+};
+
 typedef struct
 {
     int output_stream_id;
-    int is_video;
+
+    enum obe_coded_frame_type_e type;
 
     int64_t pts;
 

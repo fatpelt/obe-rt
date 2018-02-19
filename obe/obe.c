@@ -382,7 +382,7 @@ int remove_early_frames( obe_t *h, int64_t pts )
     for( int i = 0; i < h->mux_queue.size; i++ )
     {
         obe_coded_frame_t *frame = h->mux_queue.queue[i];
-        if( !frame->is_video && frame->pts < pts )
+        if (frame->type != CF_VIDEO && frame->pts < pts)
         {
             destroy_coded_frame( frame );
             memmove( &h->mux_queue.queue[i], &h->mux_queue.queue[i+1], sizeof(*h->mux_queue.queue) * (h->mux_queue.size-1-i) );

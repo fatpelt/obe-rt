@@ -229,6 +229,7 @@ static void *start_encoder_mp2( void *ptr )
             av_fifo_generic_read( fifo, coded_frame->data, frame_size, NULL );
             coded_frame->pts = cur_pts;
             coded_frame->random_access = 1; /* Every frame output is a random access point */
+            coded_frame->type = CF_AUDIO;
 
             add_to_queue( &h->mux_queue, coded_frame );
             /* We need to generate PTS because frame sizes have changed */
