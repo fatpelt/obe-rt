@@ -253,14 +253,14 @@ typedef struct
     BMDDisplayMode enabled_mode_id;
 
     /* LIBKLVANC handle / context */
-    struct vanc_context_s *vanchdl;
+    struct klvanc_context_s *vanchdl;
 #define VANC_CACHE_DUMP_INTERVAL 60
     time_t last_vanc_cache_dump;
 
     BMDTimeValue stream_time;
 
     /* SMPTE2038 packetizer */
-    struct smpte2038_packetizer_s *smpte2038_ctx;
+    struct klvanc_smpte2038_packetizer_s *smpte2038_ctx;
 
 #if KL_PRBS_INPUT
     struct prbs_context_s prbs;
@@ -352,7 +352,7 @@ static int transmit_pes_to_muxer(decklink_ctx_t *decklink_ctx, uint8_t *buf, uin
  * VANC parser. We'll expect our VANC message callbacks to happen on this
  * same calling thread.
  */
-static void convert_colorspace_and_parse_vanc(decklink_ctx_t *decklink_ctx, struct vanc_context_s *vanchdl, unsigned char *buf, unsigned int uiWidth, unsigned int lineNr)
+static void convert_colorspace_and_parse_vanc(decklink_ctx_t *decklink_ctx, struct klvanc_context_s *vanchdl, unsigned char *buf, unsigned int uiWidth, unsigned int lineNr)
 {
 	/* Convert the vanc line from V210 to CrCB422, then vanc parse it */
 
@@ -376,18 +376,18 @@ static void convert_colorspace_and_parse_vanc(decklink_ctx_t *decklink_ctx, stru
 		return;
 
     if (decklink_ctx->smpte2038_ctx)
-        smpte2038_packetizer_begin(decklink_ctx->smpte2038_ctx);
+        klvanc_smpte2038_packetizer_begin(decklink_ctx->smpte2038_ctx);
 
 	if (decklink_ctx->vanchdl) {
-		int ret = vanc_packet_parse(vanchdl, lineNr, decoded_words, sizeof(decoded_words) / (sizeof(unsigned short)));
+		int ret = klvanc_packet_parse(vanchdl, lineNr, decoded_words, sizeof(decoded_words) / (sizeof(unsigned short)));
 		if (ret < 0) {
       	  /* No VANC on this line */
 		}
 	}
 
     if (decklink_ctx->smpte2038_ctx) {
-        if (smpte2038_packetizer_end(decklink_ctx->smpte2038_ctx,
-                                     decklink_ctx->stream_time / 300) == 0) {
+        if (klvanc_smpte2038_packetizer_end(decklink_ctx->smpte2038_ctx,
+                                            decklink_ctx->stream_time / 300) == 0) {
 
             if (transmit_pes_to_muxer(decklink_ctx, decklink_ctx->smpte2038_ctx->buf,
                                       decklink_ctx->smpte2038_ctx->bufused) < 0) {
@@ -571,7 +571,7 @@ static void _vanc_cache_dump(decklink_ctx_t *ctx)
 
     for (int d = 0; d <= 0xff; d++) {
         for (int s = 0; s <= 0xff; s++) {
-            struct vanc_cache_s *e = vanc_cache_lookup(ctx->vanchdl, d, s);
+            struct klvanc_cache_s *e = klvanc_cache_lookup(ctx->vanchdl, d, s);
             if (!e)
                 continue;
 
@@ -1149,12 +1149,12 @@ static void close_card( decklink_opts_t *decklink_opts )
     }
 
     if (decklink_ctx->vanchdl) {
-        vanc_context_destroy(decklink_ctx->vanchdl);
+        klvanc_context_destroy(decklink_ctx->vanchdl);
         decklink_ctx->vanchdl = 0;
     }
 
     if (decklink_ctx->smpte2038_ctx) {
-        smpte2038_packetizer_free(&decklink_ctx->smpte2038_ctx);
+        klvanc_smpte2038_packetizer_free(&decklink_ctx->smpte2038_ctx);
         decklink_ctx->smpte2038_ctx = 0;
     }
 
@@ -1175,34 +1175,37 @@ static void close_card( decklink_opts_t *decklink_opts )
 }
 
 /* VANC Callbacks */
-static int cb_PAYLOAD_INFORMATION(void *callback_context, struct vanc_context_s *ctx, struct packet_payload_information_s *pkt)
+static int cb_AFD(void *callback_context, struct klvanc_context_s *ctx,
+                  struct klvanc_packet_afd_s *pkt)
 {
 	decklink_ctx_t *decklink_ctx = (decklink_ctx_t *)callback_context;
 	if (decklink_ctx->h->verbose_bitmask & INPUTSOURCE__SDI_VANC_DISCOVERY_DISPLAY) {
 		printf("%s:%s()\n", __FILE__, __func__);
-		dump_PAYLOAD_INFORMATION(ctx, pkt); /* vanc lib helper */
+		klvanc_dump_AFD(ctx, pkt); /* vanc lib helper */
 	}
 
 	return 0;
 }
 
-static int cb_EIA_708B(void *callback_context, struct vanc_context_s *ctx, struct packet_eia_708b_s *pkt)
+static int cb_EIA_708B(void *callback_context, struct klvanc_context_s *ctx,
+                       struct klvanc_packet_eia_708b_s *pkt)
 {
 	decklink_ctx_t *decklink_ctx = (decklink_ctx_t *)callback_context;
 	if (decklink_ctx->h->verbose_bitmask & INPUTSOURCE__SDI_VANC_DISCOVERY_DISPLAY) {
 		printf("%s:%s()\n", __FILE__, __func__);
-		dump_EIA_708B(ctx, pkt); /* vanc lib helper */
+		klvanc_dump_EIA_708B(ctx, pkt); /* vanc lib helper */
 	}
 
 	return 0;
 }
 
-static int cb_EIA_608(void *callback_context, struct vanc_context_s *ctx, struct packet_eia_608_s *pkt)
+static int cb_EIA_608(void *callback_context, struct klvanc_context_s *ctx,
+                      struct klvanc_packet_eia_608_s *pkt)
 {
 	decklink_ctx_t *decklink_ctx = (decklink_ctx_t *)callback_context;
 	if (decklink_ctx->h->verbose_bitmask & INPUTSOURCE__SDI_VANC_DISCOVERY_DISPLAY) {
 		printf("%s:%s()\n", __FILE__, __func__);
-		dump_EIA_608(ctx, pkt); /* vanc library helper */
+		klvanc_dump_EIA_608(ctx, pkt); /* vanc library helper */
 	}
 
 	return 0;
@@ -1262,22 +1265,23 @@ static int transmit_pes_to_muxer(decklink_ctx_t *decklink_ctx, uint8_t *buf, uin
 	return 0;
 }
 
-static int cb_SCTE_104(void *callback_context, struct vanc_context_s *ctx, struct packet_scte_104_s *pkt)
+static int cb_SCTE_104(void *callback_context, struct klvanc_context_s *ctx,
+                       struct klvanc_packet_scte_104_s *pkt)
 {
 	/* It should be impossible to get here until the user has asked to enable SCTE35 */
 
 	decklink_ctx_t *decklink_ctx = (decklink_ctx_t *)callback_context;
 	if (decklink_ctx->h->verbose_bitmask & INPUTSOURCE__SDI_VANC_DISCOVERY_DISPLAY) {
 		printf("%s:%s()\n", __FILE__, __func__);
-		dump_SCTE_104(ctx, pkt); /* vanc library helper */
+		klvanc_dump_SCTE_104(ctx, pkt); /* vanc library helper */
 	}
 
-	if (vanc_packetType1(&pkt->hdr)) {
+	if (klvanc_packetType1(&pkt->hdr)) {
 		/* Silently discard type 1 SCTE104 packets, as per SMPTE 291 section 6.3 */
 		return 0;
 	}
 
-	struct single_operation_message *m = &pkt->so_msg;
+	struct klvanc_single_operation_message *m = &pkt->so_msg;
 
 	if (m->opID == 0xFFFF /* Multiple Operation Message */) {
 		struct splice_entries results;
@@ -1317,7 +1321,8 @@ static int cb_SCTE_104(void *callback_context, struct vanc_context_s *ctx, struc
 	return 0;
 }
 
-static int cb_all(void *callback_context, struct vanc_context_s *ctx, struct packet_header_s *pkt)
+static int cb_all(void *callback_context, struct klvanc_context_s *ctx,
+                  struct klvanc_packet_header_s *pkt)
 {
 	decklink_ctx_t *decklink_ctx = (decklink_ctx_t *)callback_context;
 	if (decklink_ctx->h->verbose_bitmask & INPUTSOURCE__SDI_VANC_DISCOVERY_DISPLAY) {
@@ -1330,7 +1335,7 @@ static int cb_all(void *callback_context, struct vanc_context_s *ctx, struct pac
 	 * Push the pkt into the SMPTE2038 layer, its collecting VANC data.
 	 */
 	if (decklink_ctx->smpte2038_ctx) {
-		if (smpte2038_packetizer_append(decklink_ctx->smpte2038_ctx, pkt) < 0) {
+		if (klvanc_smpte2038_packetizer_append(decklink_ctx->smpte2038_ctx, pkt) < 0) {
 		}
 	}
 
@@ -1345,7 +1350,7 @@ static int cb_all(void *callback_context, struct vanc_context_s *ctx, struct pac
 		/* DID 0x62 SDID 01 : 0000 03ff 03ff 0162 0101 0217 01ad 0115 */
 		pkt->raw[3] = 0x241;
 		pkt->raw[4] = 0x107;
-		int ret = vanc_packet_parse(decklink_ctx->vanchdl, pkt->lineNr, pkt->raw, pkt->rawLengthWords);
+		int ret = klvanc_packet_parse(decklink_ctx->vanchdl, pkt->lineNr, pkt->raw, pkt->rawLengthWords);
 		if (ret < 0) {
 			/* No VANC on this line */
 			fprintf(stderr, "%s() patched VANC for did 0x52 failed\n", __func__);
@@ -1355,7 +1360,8 @@ static int cb_all(void *callback_context, struct vanc_context_s *ctx, struct pac
 	return 0;
 }
 
-static int cb_VANC_TYPE_KL_UINT64_COUNTER(void *callback_context, struct vanc_context_s *ctx, struct packet_kl_u64le_counter_s *pkt)
+static int cb_VANC_TYPE_KL_UINT64_COUNTER(void *callback_context, struct klvanc_context_s *ctx,
+					  struct klvanc_packet_kl_u64le_counter_s *pkt)
 {
         /* Have the library display some debug */
 	static uint64_t lastGoodKLFrameCounter = 0;
@@ -1374,9 +1380,9 @@ static int cb_VANC_TYPE_KL_UINT64_COUNTER(void *callback_context, struct vanc_co
         return 0;
 }
 
-static struct vanc_callbacks_s callbacks = 
+static struct klvanc_callbacks_s callbacks =
 {
-	.payload_information	= cb_PAYLOAD_INFORMATION,
+	.afd			= cb_AFD,
 	.eia_708b		= cb_EIA_708B,
 	.eia_608		= cb_EIA_608,
 	.scte_104		= cb_SCTE_104,
@@ -1435,7 +1441,7 @@ static int open_card( decklink_opts_t *decklink_opts )
     IDeckLinkIterator *decklink_iterator = NULL;
     HRESULT result;
 
-    if (vanc_context_create(&decklink_ctx->vanchdl) < 0) {
+    if (klvanc_context_create(&decklink_ctx->vanchdl) < 0) {
         fprintf(stderr, "[decklink] Error initializing VANC library context\n");
     } else {
         decklink_ctx->vanchdl->verbose = 0;
@@ -1447,7 +1453,7 @@ static int open_card( decklink_opts_t *decklink_opts )
             /* Turn on the vanc cache, we'll want to query it later. */
             decklink_ctx->last_vanc_cache_dump = 1;
             fprintf(stdout, "Enabling option VANC CACHE, interval %d seconds\n", VANC_CACHE_DUMP_INTERVAL);
-            vanc_context_enable_cache(decklink_ctx->vanchdl);
+            klvanc_context_enable_cache(decklink_ctx->vanchdl);
         }
     }
 
@@ -1458,7 +1464,7 @@ static int open_card( decklink_opts_t *decklink_opts )
 
     if (OPTION_ENABLED(smpte2038)) {
         fprintf(stdout, "Enabling option SMPTE2038\n");
-        if (smpte2038_packetizer_alloc(&decklink_ctx->smpte2038_ctx) < 0) {
+        if (klvanc_smpte2038_packetizer_alloc(&decklink_ctx->smpte2038_ctx) < 0) {
             fprintf(stderr, "Unable to allocate a SMPTE2038 context.\n");
         }
     }
