@@ -772,6 +772,15 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
     }
 
     int sfc = audioframe->GetSampleFrameCount();
+#if 0
+    if (audioframe) {
+        FILE *fh = fopen("/tmp/shortaudio.cmd", "rb");
+        if (fh) {
+            sfc /= 2; /* Trigger short audio frame handling. */
+            fclose(fh);
+        }
+    }
+#endif
     if (sfc < decklink_opts_->audio_sfc_min || sfc > decklink_opts_->audio_sfc_max) {
         syslog(LOG_ERR, "Decklink card index %i: illegal audio sample count %d, wanted %d to %d, "
             "dropping frames to maintain MP2 sync\n",
