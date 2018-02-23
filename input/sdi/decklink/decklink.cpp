@@ -299,13 +299,6 @@ typedef struct
     int timebase_num;
     int timebase_den;
 
-    /* Some equipment occasionally sends very short audio frames just prior to signal loss.
-     * This creates poor MP2 audio PTS timing and results in A/V drift of 800ms or worse.
-     * We'll detect and discard these frames by precalculating
-     * a valid min and max value, then doing windowed detection during frame arrival.
-     */
-    int audio_sfc_min, audio_sfc_max;
-
     int interlaced;
     int tff;
 } decklink_opts_t;
@@ -331,19 +324,6 @@ void kllog(const char *category, const char *format, ...)
     va_end(vl);
 
     syslog(LOG_INFO | LOG_LOCAL4, "%s", buf);
-}
-
-static void calculate_audio_sfc_window(decklink_opts_t *opts)
-{
-    double n = opts->timebase_num;
-    double d = opts->timebase_den;
-    double fps = d / n;
-    double samplerate = 48000;
-    double marginpct = 0.005;
-
-    opts->audio_sfc_min = (samplerate * ((double)1 - marginpct)) / fps;
-    opts->audio_sfc_max = (samplerate * ((double)1 + marginpct)) / fps;
-    //printf("%s() audio_sfc_min/max = %d/%d\n", __func__, opts->audio_sfc_min, opts->audio_sfc_max);
 }
 
 static int transmit_pes_to_muxer(decklink_ctx_t *decklink_ctx, uint8_t *buf, uint32_t byteCount);
@@ -519,7 +499,6 @@ public:
                 decklink_opts_->video_format = video_format_tab[i].obe_name;
                 decklink_opts_->timebase_num = video_format_tab[i].timebase_num;
                 decklink_opts_->timebase_den = video_format_tab[i].timebase_den;
-                calculate_audio_sfc_window(decklink_opts_);
 
 		if (decklink_opts_->video_format == INPUT_VIDEO_FORMAT_1080P_2997)
 		{
@@ -768,15 +747,6 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
         syslog(LOG_ERR, "Decklink card index %i: missing audio (%p) or video (%p)",
             decklink_opts_->card_idx,
             audioframe, videoframe);
-        return S_OK;
-    }
-
-    int sfc = audioframe->GetSampleFrameCount();
-    if (sfc < decklink_opts_->audio_sfc_min || sfc > decklink_opts_->audio_sfc_max) {
-        syslog(LOG_ERR, "Decklink card index %i: illegal audio sample count %d, wanted %d to %d, "
-            "dropping frames to maintain MP2 sync\n",
-            decklink_opts_->card_idx, sfc,
-            decklink_opts_->audio_sfc_min, decklink_opts_->audio_sfc_max);
         return S_OK;
     }
 
@@ -1635,7 +1605,6 @@ static int open_card( decklink_opts_t *decklink_opts )
     found_mode = false;
     decklink_opts->timebase_num = video_format_tab[i].timebase_num;
     decklink_opts->timebase_den = video_format_tab[i].timebase_den;
-    calculate_audio_sfc_window(decklink_opts);
 
     for (;;)
     {
