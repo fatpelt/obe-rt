@@ -1046,6 +1046,8 @@ static void display_verbose()
 
     /* MUXER */
     DISPLAY_VERBOSE_MASK(bm, MUX__DQ_HEXDUMP);
+    DISPLAY_VERBOSE_MASK(bm, MUX__PTS_REPORT_TIMES);
+    DISPLAY_VERBOSE_MASK(bm, MUX__REPORT_Q);
 }
 
 static int set_verbose(char *command, obecli_command_t *child)
