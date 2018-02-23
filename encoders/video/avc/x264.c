@@ -142,6 +142,9 @@ static void *start_encoder( void *ptr )
     float buffer_fill;
     obe_raw_frame_t *raw_frame;
     obe_coded_frame_t *coded_frame;
+    int64_t last_raw_frame_pts = 0;
+    int64_t current_raw_frame_pts = 0;
+    int upstream_signal_lost = 0;
 
     /* TODO: check for width, height changes */
 
@@ -198,6 +201,8 @@ static void *start_encoder( void *ptr )
             break;
         }
 
+        upstream_signal_lost = 0;
+
         /* Reset the speedcontrol buffer if the source has dropped frames. Otherwise speedcontrol
          * stays in an underflow state and is locked to the fastest preset */
         pthread_mutex_lock( &h->drop_mutex );
@@ -211,12 +216,31 @@ static void *start_encoder( void *ptr )
             x264_speedcontrol_sync( s, enc_params->avc_param.sc.i_buffer_size, enc_params->avc_param.sc.f_buffer_init, 0 );
 #endif
             h->encoder_drop = 0;
+            upstream_signal_lost = 1;
         }
         pthread_mutex_unlock( &h->drop_mutex );
 
         raw_frame = encoder->queue.queue[0];
         pthread_mutex_unlock( &encoder->queue.mutex );
 
+#if 1
+        static int drop_count = 0;
+        FILE *fh = fopen("/tmp/dropvideoframe.cmd", "rb");
+        if (fh) {
+            fclose(fh);
+            unlink("/tmp/dropvideoframe.cmd");
+            drop_count = 60;
+        }
+        if (drop_count-- > 0) {
+            raw_frame->release_data( raw_frame );
+            raw_frame->release_frame( raw_frame );
+            remove_from_queue( &encoder->queue );
+            const char *ts = obe_ascii_datetime();
+            fprintf(stderr, "[X264] %s -- Faking a dropped raw video frame\n", ts);
+            free((void *)ts);
+            continue;
+        }
+#endif
         /* convert obe_frame_t into x264 friendly struct */
         if( convert_obe_to_x264_pic( &pic, raw_frame ) < 0 )
         {
@@ -227,6 +251,9 @@ printf("Malloc failed\n");
 
         /* FIXME: if frames are dropped this might not be true */
         pic.i_pts = pts++;
+
+        current_raw_frame_pts = raw_frame->pts;
+
         pts2 = malloc( sizeof(int64_t) );
         if( !pts2 )
         {
@@ -339,6 +366,15 @@ for (int m = 0; m < i_nal; m++) {
             memcpy( coded_frame->data, nal[0].p_payload, frame_size );
             coded_frame->type = CF_VIDEO;
             coded_frame->len = frame_size;
+
+            /* We've detected video frame loss that wasn't related to an upstream signal loss.
+             * ensure we pass that data to the mux.
+             */
+            if (last_raw_frame_pts && !upstream_signal_lost) {
+                coded_frame->discontinuity_hz = (current_raw_frame_pts - last_raw_frame_pts) - frame_duration;
+            }
+            last_raw_frame_pts = current_raw_frame_pts;
+
 #if X264_BUILD < 148
             coded_frame->cpb_initial_arrival_time = pic_out.hrd_timing.cpb_initial_arrival_time;
             coded_frame->cpb_final_arrival_time = pic_out.hrd_timing.cpb_final_arrival_time;
