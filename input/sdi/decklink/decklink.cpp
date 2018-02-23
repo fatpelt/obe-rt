@@ -790,6 +790,17 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
         }
     }
 
+#if 0
+    if (audioframe) {
+        FILE *fh = fopen("/tmp/zeroaudio.cmd", "rb");
+        if (fh) {
+            void *p;
+            audioframe->GetBytes(&p);
+            memset(p, 0, audioframe->GetSampleFrameCount() * decklink_opts_->num_channels * (32 / 8));
+            fclose(fh);
+        }
+    }
+#endif
 
     av_init_packet( &pkt );
 
