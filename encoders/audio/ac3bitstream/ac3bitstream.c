@@ -39,7 +39,6 @@
 
 static int64_t cur_pts = -1;
 static int64_t frm_pts = -1;
-static int64_t upstream_pts_drift = 0;
 
 /* Polynomial table for AC3/A52 checksums 16+15+1+1 */
 static const uint16_t crc_tab[] =
@@ -207,33 +206,9 @@ static void * detector_callback(void *user_context,
 	 * then a good chance upstream lost frames. We'll rebase to the new
 	 * timebase.
 	 */
-	uint64_t x = abs(((frm_pts - upstream_pts_drift) / 27000) - (cur_pts / 27000));
-#if 0
-	printf("%s()                                                                  x %lu     \r", __func__, x);
-#endif
-
-	if (x > 400) {
-		upstream_pts_drift = frm_pts - cur_pts;
-#if 0
-		time_t now; time(&now);
-		printf("\nRESETTING DRIFT  %lu  ************************************************** @ %s",
-			upstream_pts_drift, ctime(&now));
-#endif
-		x = abs(((frm_pts - upstream_pts_drift) / 27000) - (cur_pts / 27000));
-	}
-
-	if (x > 32 * 5) {
-		/* If we've drifted by more than 5 x 32ms AC3 frames, rebase the clock.
-		 * Due to various technical limitations, we need to rebase the AC3 pts based on streamtime
-		 * taking into consideration any drift created by cable disconnects. Besides drift due to cable disconnected,
-		 * drift can occur if upstream drops ac3 content due to bad data - or if other equipment fails to sustain
-		 * AC3 output, leading to the decklink having nothing to capture.
-		 */
-		cur_pts = frm_pts - upstream_pts_drift;
-#if 0
-		time_t now; time(&now);
-		printf("\nRESETTING TIME ********************************************************* @ %s", ctime(&now));
-#endif
+	uint64_t x = abs((frm_pts / 27000) - (cur_pts / 27000));
+	if (x > 150) {
+		cur_pts = frm_pts;
 #if 0
 		/* Audio will render slightly later than video, becauses we're
 		 * running the audio through a N deep ringbuffer for reframing.
