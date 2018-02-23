@@ -671,7 +671,7 @@ static int encapsulate_user_data( obe_raw_frame_t *raw_frame, obe_int_input_stre
         {
             free( raw_frame->user_data[i].data );
             memmove( &raw_frame->user_data[i], &raw_frame->user_data[i+1],
-                     sizeof(*raw_frame->user_data) * (raw_frame->num_user_data-i-1) );
+                     sizeof(raw_frame->user_data) * (raw_frame->num_user_data-i-1) );
             raw_frame->num_user_data--;
             i--;
         }
