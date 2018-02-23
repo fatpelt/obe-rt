@@ -531,6 +531,7 @@ typedef struct
 extern const obe_smoothing_func_t enc_smoothing;
 extern const obe_smoothing_func_t mux_smoothing;
 
+const char *obe_ascii_datetime();
 int64_t obe_mdate( void );
 
 obe_device_t *new_device( void );

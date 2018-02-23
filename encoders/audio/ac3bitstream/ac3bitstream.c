@@ -112,13 +112,18 @@ static int validateCRC(uint8_t *buf, uint32_t buflen)
 	/* TODO: We can skip CRC1 given that CRC2 covers the entire packet. */
 	uint16_t crc = crc_calc(((const uint16_t *)buf) + 1, framesize58 - 1);
 	if (crc != 0) {
-		fprintf(stdout, "[AC3] CRC1 failure, dropping frame, framesize = %d, framesize58 = %d.\n", framesize, framesize58);
+		const char *ts = obe_ascii_datetime();
+		fprintf(stdout, "[AC3] %s -- CRC1 failure, dropping frame, framesize = %d, framesize58 = %d.\n", ts, framesize, framesize58);
+		free((void *)ts);
+
 		ret = 0;
 	}
 
 	uint16_t crc2 = crc_calc(((const uint16_t *)buf) + 1, framesize - 1);
 	if (crc2 != 0) {
-		fprintf(stdout, "[AC3] CRC2 failure, dropping frame, framesize = %d, framesize58 = %d.\n", framesize, framesize58);
+		const char *ts = obe_ascii_datetime();
+		fprintf(stdout, "[AC3] %s -- CRC2 failure, dropping frame, framesize = %d, framesize58 = %d.\n", ts, framesize, framesize58);
+		free((void *)ts);
 		ret = 0;
 	}
 

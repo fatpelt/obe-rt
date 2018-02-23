@@ -35,6 +35,18 @@
 extern int pthread_setname_np(pthread_t thread, const char *name);
 
 /** Utilities **/
+
+const char *obe_ascii_datetime()
+{
+	char *s = calloc(1, 64);
+	time_t now;
+	time(&now);
+	sprintf(s, "%s", ctime(&now));
+	s[ strlen(s) - 1 ] = 0;
+ 
+	return (const char *)s;
+}
+
 int64_t obe_mdate( void )
 {
     struct timespec ts_current;
