@@ -55,7 +55,7 @@ static void *start_smoothing( void *ptr )
         return NULL;
     }
 
-    output_buffers = malloc( h->num_outputs * sizeof(*output_buffers) );
+    output_buffers = calloc(1, h->num_outputs * sizeof(*output_buffers));
     if( !output_buffers )
     {
         fprintf( stderr, "[mux-smoothing] Could not allocate output buffers" );
@@ -134,6 +134,7 @@ static void *start_smoothing( void *ptr )
         if( !muxed_data )
         {
             pthread_mutex_unlock( &h->mux_smoothing_queue.mutex );
+            free(output_buffers);
             syslog( LOG_ERR, "Malloc failed\n" );
             return NULL;
         }
@@ -145,6 +146,8 @@ static void *start_smoothing( void *ptr )
             if( av_fifo_realloc2( fifo_data, av_fifo_size( fifo_data ) + muxed_data[i]->len ) < 0 )
             {
                 syslog( LOG_ERR, "Malloc failed\n" );
+                free(muxed_data);
+                free(output_buffers);
                 return NULL;
             }
 
@@ -153,6 +156,8 @@ static void *start_smoothing( void *ptr )
             if( av_fifo_realloc2( fifo_pcr, av_fifo_size( fifo_pcr ) + ((muxed_data[i]->len * sizeof(int64_t)) / 188) ) < 0 )
             {
                 syslog( LOG_ERR, "Malloc failed\n" );
+                free(muxed_data);
+                free(output_buffers);
                 return NULL;
             }
 
@@ -169,6 +174,11 @@ static void *start_smoothing( void *ptr )
         while( av_fifo_size( fifo_data ) >= TS_PACKETS_SIZE )
         {
             output_buffers[0] = av_buffer_alloc( TS_PACKETS_SIZE + 7 * sizeof(int64_t) );
+            if (output_buffers[0] == NULL) {
+                syslog(LOG_ERR, "Malloc failed\n");
+                free(output_buffers);
+                return NULL;
+            }
             av_fifo_generic_read( fifo_pcr, output_buffers[0]->data, 7 * sizeof(int64_t), NULL );
             av_fifo_generic_read( fifo_data, &output_buffers[0]->data[7 * sizeof(int64_t)], TS_PACKETS_SIZE, NULL );
 
@@ -178,6 +188,7 @@ static void *start_smoothing( void *ptr )
                 if( !output_buffers[i] )
                 {
                     syslog( LOG_ERR, "Malloc failed\n" );
+                    free(output_buffers);
                     return NULL;
                 }
             }
@@ -197,8 +208,10 @@ static void *start_smoothing( void *ptr )
 
             for( int i = 0; i < h->num_outputs; i++ )
             {
-                if( add_to_queue( &h->outputs[i]->queue, output_buffers[i] ) < 0 )
+                if( add_to_queue( &h->outputs[i]->queue, output_buffers[i] ) < 0 ) {
+                    free(output_buffers);
                     return NULL;
+                }
                 output_buffers[i] = NULL;
             }
         }
