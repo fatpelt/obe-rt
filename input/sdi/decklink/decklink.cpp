@@ -743,13 +743,6 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
     IDeckLinkVideoFrameAncillary *ancillary;
     BMDTimeValue frame_duration;
 
-    if ((audioframe == NULL) || (videoframe == NULL)) {
-        syslog(LOG_ERR, "Decklink card index %i: missing audio (%p) or video (%p)",
-            decklink_opts_->card_idx,
-            audioframe, videoframe);
-        return S_OK;
-    }
-
     if( decklink_opts_->probe_success )
         return S_OK;
 
