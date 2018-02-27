@@ -374,10 +374,12 @@ void *open_muxer( void *ptr )
     /* We're calculating loss between 'last' and 'current' audio/video PTS, we need
      * to cache the last values for various clocks.
      */
+#if 0
     int64_t ltn_last_audio_pts = 0;
     int64_t ltn_last_audio_dts = 0;
     int64_t ltn_last_video_pts = 0;
     int64_t ltn_last_video_dts = 0;
+#endif
     int64_t initial_audio_latency = -1; /* ticks of 27MHz clock. Amount of audio (in time) we have buffered before the first video frame appeared. */
     int64_t audio_drift_correction = 0; /* ticks of 27MHz clock. As we detect drift we accumulate it here. We use thie to adjust audio clocks. */
     int64_t video_drift_correction = 0; /* ticks of 27MHz clock. As we detect drift we accumulate it here. We use thie to adjust video clocks. */
@@ -826,6 +828,17 @@ void *open_muxer( void *ptr )
                 coded_frame->real_pts += video_drift_correction;
             }
 
+            if (coded_frame->type == CF_AUDIO) {
+                /* If the video frame has indicated unexpected loss of signal, bend all future received video frames. */
+                if (coded_frame->discontinuity_hz) {
+                    const char *ts = obe_ascii_datetime();
+                    printf("[MUX] %s -- Audio adjust made of %" PRIi64 " ticks.\n", ts, coded_frame->discontinuity_hz);
+                    free((void *)ts);
+                    audio_drift_correction += coded_frame->discontinuity_hz;
+                    coded_frame->discontinuity_hz = 0;
+                }
+            }
+
             if (h->verbose_bitmask & MUX__DQ_HEXDUMP) {
                 printf("coded_frame: output_stream_id = %d, type = %d, len = %6d -- ",
                     coded_frame->output_stream_id, coded_frame->type, coded_frame->len);
@@ -884,6 +897,7 @@ void *open_muxer( void *ptr )
             }
         }
 
+#if 0
         /* Inspect the output array, check for any significant PTS drift. Recompute
          * any new audio_drift_correction.
          */
@@ -973,6 +987,7 @@ void *open_muxer( void *ptr )
             }
 
         } /* foreach frames[] obj */
+#endif
 
         pthread_mutex_unlock( &h->mux_queue.mutex );
 

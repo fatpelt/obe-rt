@@ -143,6 +143,43 @@ static void * detector_callback(void *user_context,
 	obe_encoder_t *encoder = enc_params->encoder;
 	uint32_t payload_byteCount = payload_bitCount / 8;
 
+	/* Keep track of any lost signal condition inside our AC3 monitoring window. */
+	if (h->audio_encoder_drop) {
+		h->audio_encoder_drop = 0;
+		enc_params->cb_window_lost_signal = 1;
+	}
+
+	/* Detect and measure AC3 packet loss by using a 4000ms 125 ac3-frame monitoring
+	 * window. If it takes longr than 4000ms to collect 125 AC3 frames then we've
+	 * lost data. In which case, compute the loss and send this information downstream
+	 * to the mux by way of the discontinuity_hz field.
+	 * If we detect a loss due to signal loss, ignore the discontinuity, the mux
+	 * already deals with that correction.
+	 */
+	int64_t discontinuity_hz = 0;
+	enc_params->cb_window_count++;
+	if (enc_params->cb_window_count == 1) {
+		gettimeofday(&enc_params->cb_window_begin, NULL);
+	} else
+	if (enc_params->cb_window_count > 125 /* 4 seconds of ac3 */) {
+		struct timeval now, diff;
+		gettimeofday(&now, NULL);
+
+		obe_timeval_subtract(&diff, &now, &enc_params->cb_window_begin);
+		int64_t us = obe_timediff_to_usecs(&diff);
+
+		if ((enc_params->cb_window_lost_signal == 0) && us >= 4064000) {
+			discontinuity_hz = (us - 4000000) * 27; /* We need this in a 27MHz clock. */
+
+			const char *ts = obe_ascii_datetime();
+			printf("%s() %s -- us = %" PRIi64 " disc = %" PRIi64 "\n", __func__, ts, us, discontinuity_hz);
+			free((void *)ts);
+		}
+		
+		enc_params->cb_window_count = 0;
+		enc_params->cb_window_lost_signal = 0;
+	}
+
 #if LOCAL_DEBUG
 	printf("[AC3] ac3encoder:%s(%d) --\n", __func__, payload_byteCount);
 	hexdump(payload, 32, 32);
@@ -206,6 +243,7 @@ static void * detector_callback(void *user_context,
 	cf->pts = cur_pts;
 	cf->type = CF_AUDIO;
 	cf->random_access = 1; /* Every frame output is a random access point */
+	cf->discontinuity_hz = discontinuity_hz;
 	memcpy(cf->data, payload, payload_byteCount);
 	cf->len = payload_byteCount;
 
