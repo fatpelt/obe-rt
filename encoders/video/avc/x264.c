@@ -206,7 +206,7 @@ static void *start_encoder( void *ptr )
         /* Reset the speedcontrol buffer if the source has dropped frames. Otherwise speedcontrol
          * stays in an underflow state and is locked to the fastest preset */
         pthread_mutex_lock( &h->drop_mutex );
-        if( h->encoder_drop )
+        if( h->video_encoder_drop )
         {
             pthread_mutex_lock( &h->enc_smoothing_queue.mutex );
             h->enc_smoothing_buffer_complete = 0;
@@ -215,7 +215,7 @@ static void *start_encoder( void *ptr )
 #if X264_BUILD < 148
             x264_speedcontrol_sync( s, enc_params->avc_param.sc.i_buffer_size, enc_params->avc_param.sc.f_buffer_init, 0 );
 #endif
-            h->encoder_drop = 0;
+            h->video_encoder_drop = 0;
             upstream_signal_lost = 1;
         }
         pthread_mutex_unlock( &h->drop_mutex );
