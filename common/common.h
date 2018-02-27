@@ -480,6 +480,7 @@ struct obe_t
      * TODO: make this work for multiple inputs and outputs */
     pthread_mutex_t drop_mutex;
     int video_encoder_drop;
+    int audio_encoder_drop;
     int mux_drop;
 
     /* Streams */
