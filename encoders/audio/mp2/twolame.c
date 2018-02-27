@@ -54,6 +54,15 @@ static void *start_encoder_mp2( void *ptr )
     obe_raw_frame_t *raw_frame;
     obe_coded_frame_t *coded_frame;
 
+    /* We're not using any windowing/monitoring capability, but
+     * lets stay safe and ensure these are initialized.
+     */
+    enc_params->cb_window_begin.tv_sec = 0;
+    enc_params->cb_window_begin.tv_usec = 0;
+    enc_params->cb_window_count = 0;
+    enc_params->cb_window_lost_signal = 0;
+
+
 #if LOCAL_DEBUG
     printf("%s() output_stream_id = %d\n", __func__, encoder->output_stream_id);
 #endif

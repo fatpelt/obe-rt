@@ -230,6 +230,12 @@ static void *start_encoder_ac3bitstream(void *ptr)
 #endif
 	obe_aud_enc_params_t *enc_params = ptr;
 	obe_encoder_t *encoder = enc_params->encoder;
+
+	enc_params->cb_window_begin.tv_sec = 0;
+	enc_params->cb_window_begin.tv_usec = 0;
+	enc_params->cb_window_count = 0;
+	enc_params->cb_window_lost_signal = 0;
+
 #if LOCAL_DEBUG
 	printf("%s() output_stream_id = %d, ptr = %p\n", __func__, encoder->output_stream_id, ptr);
 #endif
