@@ -223,7 +223,7 @@ static void *start_encoder( void *ptr )
         raw_frame = encoder->queue.queue[0];
         pthread_mutex_unlock( &encoder->queue.mutex );
 
-#if 1
+#if 0
         static int drop_count = 0;
         FILE *fh = fopen("/tmp/dropvideoframe.cmd", "rb");
         if (fh) {
