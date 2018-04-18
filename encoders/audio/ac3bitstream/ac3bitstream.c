@@ -37,7 +37,8 @@
 #include "hexdump.h"
 #endif
 
-static int64_t cur_pts = -1;
+int64_t cur_pts = -1;
+int64_t ac3_offset_ms = 0;
 
 /* Polynomial table for AC3/A52 checksums 16+15+1+1 */
 static const uint16_t crc_tab[] =
@@ -162,13 +163,25 @@ static void * detector_callback(void *user_context,
 		gettimeofday(&enc_params->cb_window_begin, NULL);
 	} else
 	if (enc_params->cb_window_count > 125 /* 4 seconds of ac3 */) {
+
 		struct timeval now, diff;
 		gettimeofday(&now, NULL);
 
 		obe_timeval_subtract(&diff, &now, &enc_params->cb_window_begin);
 		int64_t us = obe_timediff_to_usecs(&diff);
 
-		if ((enc_params->cb_window_lost_signal == 0) && us >= 4064000) {
+		/* Reduce AC3 monitoring window from 4064ms (125 + 2 frames) to 4012ms (125.5 frames.).
+		 * This improves occasional lost single frames that are not being detected.
+		 */
+#if 1
+		time_t rn = time(0);
+		printf("ac3 window expired: %s", ctime(&rn));
+		extern void display_variables();
+		display_variables();
+		printf("ac3 window us %" PRIi64 " >= 4012000? %s\n", us, us >= 4012000 ? "YES" : "NO");
+#endif
+
+		if ((enc_params->cb_window_lost_signal == 0) && us >= 4012000) {
 			discontinuity_hz = (us - 4000000) * 27; /* We need this in a 27MHz clock. */
 
 			const char *ts = obe_ascii_datetime();
@@ -240,7 +253,7 @@ static void * detector_callback(void *user_context,
 		return 0;
 	}
 
-	cf->pts = cur_pts;
+	cf->pts = cur_pts + (ac3_offset_ms * 27000);
 	cf->type = CF_AUDIO;
 	cf->random_access = 1; /* Every frame output is a random access point */
 	cf->discontinuity_hz = discontinuity_hz;

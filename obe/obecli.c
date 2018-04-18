@@ -1033,6 +1033,90 @@ static int set_outputs( char *command, obecli_command_t *child )
     return 0;
 }
 
+
+/* Case 1 */
+extern int g_decklink_fake_lost_payload;
+extern time_t g_decklink_fake_lost_payload_time;
+
+/* Case 2 */
+extern int g_decklink_fake_every_other_frame_lose_audio_payload;
+extern time_t g_decklink_fake_every_other_frame_lose_audio_payload_time;
+
+/* Case 4 audio/video clocks */
+extern int64_t cur_pts; /* audio clock */
+extern int64_t cpb_removal_time; /* Last video frame clock */
+
+extern int64_t ac3_offset_ms;
+
+/* Mux */
+extern int64_t initial_audio_latency;
+extern int64_t audio_drift_correction;
+extern int64_t video_drift_correction;
+
+void display_variables()
+{
+    printf("sdi_input.fake_60sec_lost_payload = %d [%s]\n", g_decklink_fake_lost_payload,
+        g_decklink_fake_lost_payload == 0 ? "disabled" : "enabled");
+    printf("sdi_input.fake_every_other_frame_lose_audio_payload = %d [%s]\n", g_decklink_fake_every_other_frame_lose_audio_payload,
+        g_decklink_fake_every_other_frame_lose_audio_payload == 0 ? "disabled" : "enabled");
+
+    printf("audio_encoder.ac3_offset_ms = %" PRIi64 "\n", ac3_offset_ms);
+    printf("audio_encoder.last_pts = %" PRIi64 "\n", cur_pts);
+    printf("video_encoder.last_pts = %" PRIi64 "\n", cpb_removal_time);
+    printf("v - a                  = %" PRIi64 "  %" PRIi64 "(ms)\n", cpb_removal_time - cur_pts,
+        (cpb_removal_time - cur_pts) / 27000);
+    printf("a - v                  = %" PRIi64 "  %" PRIi64 "(ms)\n", cur_pts - cpb_removal_time,
+        (cur_pts - cpb_removal_time) / 27000);
+
+    printf("ts_mux.initial_audio_latency  = %" PRIi64 "\n", initial_audio_latency);
+    printf("ts_mux.video_drift_correction = %" PRIi64 "  %" PRIi64 "(ms)\n",
+        video_drift_correction,
+        video_drift_correction / 27000);
+    printf("ts_mux.audio_drift_correction = %" PRIi64 "  %" PRIi64 "(ms)\n",
+        audio_drift_correction,
+        audio_drift_correction / 27000);
+
+}
+
+static int set_variable(char *command, obecli_command_t *child)
+{
+    int64_t val = 0;
+    char var[128];
+
+    if (!strlen(command)) {
+        /* Missing arg, display the current value. */
+        display_variables();
+        return 0;
+    }
+
+    if (sscanf(command, "%s = %" PRIi64, &var[0], &val) != 2) {
+        printf("illegal variable name.\n");
+        return -1;
+    }
+
+    if (strcasecmp(var, "sdi_input.fake_60sec_lost_payload") == 0) {
+        printf("setting %s to %" PRIi64 "\n", var, val);
+        g_decklink_fake_lost_payload = val;
+        if (val == 0)
+            g_decklink_fake_lost_payload_time = 0;
+    } else
+    if (strcasecmp(var, "sdi_input.fake_every_other_frame_lose_audio_payload") == 0) {
+        g_decklink_fake_every_other_frame_lose_audio_payload = val;
+        g_decklink_fake_every_other_frame_lose_audio_payload_time = 0;
+    } else
+    if (strcasecmp(var, "audio_encoder.ac3_offset_ms") == 0) {
+        ac3_offset_ms = val;
+    } else {
+        printf("illegal variable name.\n");
+        return -1;
+    }
+
+    //if (sscanf(command, "0x%x", &bitmask) != 1)
+    //    return -1;
+
+    return 0;
+}
+
 static void display_verbose()
 {
     uint32_t bm = cli.h->verbose_bitmask;

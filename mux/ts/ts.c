@@ -341,6 +341,10 @@ static void encoder_wait( obe_t *h, int output_stream_id )
     pthread_mutex_unlock( &encoder->queue.mutex );
 }
 
+int64_t initial_audio_latency = -1; /* ticks of 27MHz clock. Amount of audio (in time) we have buffered before the first video frame appeared. */
+int64_t audio_drift_correction = 0; /* ticks of 27MHz clock. As we detect drift we accumulate it here. We use thie to adjust audio clocks. */
+int64_t video_drift_correction = 0; /* ticks of 27MHz clock. As we detect drift we accumulate it here. We use thie to adjust video clocks. */
+
 void *open_muxer( void *ptr )
 {
     obe_mux_params_t *mux_params = ptr;
@@ -380,9 +384,6 @@ void *open_muxer( void *ptr )
     int64_t ltn_last_video_pts = 0;
     int64_t ltn_last_video_dts = 0;
 #endif
-    int64_t initial_audio_latency = -1; /* ticks of 27MHz clock. Amount of audio (in time) we have buffered before the first video frame appeared. */
-    int64_t audio_drift_correction = 0; /* ticks of 27MHz clock. As we detect drift we accumulate it here. We use thie to adjust audio clocks. */
-    int64_t video_drift_correction = 0; /* ticks of 27MHz clock. As we detect drift we accumulate it here. We use thie to adjust video clocks. */
 
     /* Informational only for monitoring queues. We hold min/max values for various drifts.
      * These are never used to adjust runtime behaviour.

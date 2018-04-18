@@ -32,6 +32,8 @@ static struct kl_histogram gop_encode;
 static int histogram_dump = 0;
 #endif
 
+int64_t cpb_removal_time = 0;
+
 static void x264_logger( void *p_unused, int i_level, const char *psz_fmt, va_list arg )
 {
     if( i_level <= X264_LOG_INFO )
@@ -380,6 +382,8 @@ for (int m = 0; m < i_nal; m++) {
             coded_frame->cpb_final_arrival_time = pic_out.hrd_timing.cpb_final_arrival_time;
             coded_frame->real_dts = pic_out.hrd_timing.cpb_removal_time;
             coded_frame->real_pts = pic_out.hrd_timing.dpb_output_time;
+
+            cpb_removal_time = pic_out.hrd_timing.cpb_removal_time;
 #else
             coded_frame->cpb_initial_arrival_time = pic_out.hrd_timing.cpb_initial_arrival_time * 27000000.0;
             coded_frame->cpb_final_arrival_time = pic_out.hrd_timing.cpb_final_arrival_time * 27000000.0;

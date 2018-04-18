@@ -25,6 +25,8 @@
 
 #define LOCAL_DEBUG 0
 
+int64_t audio_offset_additional_ms = 0;
+
 static void *start_filter_audio( void *ptr )
 {
     obe_raw_frame_t *raw_frame, *split_raw_frame;
@@ -129,7 +131,7 @@ printf("%s() raw_frame->input_stream_id = %d, num_encoders = %d\n", __func__, ra
                 continue;
 
             /* PTS is the standard 27MHz clock. Adjust by ms. */
-            raw_frame->pts += ((int64_t)output_stream->audio_offset_ms * (OBE_CLOCK/1000));
+            raw_frame->pts += (((int64_t)output_stream->audio_offset_ms + audio_offset_additional_ms) * (OBE_CLOCK/1000));
 #if LOCAL_DEBUG
             printf("%s() adding frame for input %d to encoder output %d\n", __func__,
                 raw_frame->input_stream_id, h->encoders[i]->output_stream_id);
