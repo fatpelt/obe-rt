@@ -185,7 +185,7 @@ static void * detector_callback(void *user_context,
 			discontinuity_hz = (us - 4000000) * 27; /* We need this in a 27MHz clock. */
 
 			const char *ts = obe_ascii_datetime();
-			printf("%s() %s -- us = %" PRIi64 " disc = %" PRIi64 "\n", __func__, ts, us, discontinuity_hz);
+			printf("%s() %s -- us = %" PRIi64 " a/disc = %" PRIi64 "\n", __func__, ts, us, discontinuity_hz);
 			free((void *)ts);
 		}
 		
