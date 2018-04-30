@@ -330,10 +330,47 @@ typedef struct
     pthread_cond_t  out_cv;
 } obe_queue_t;
 
+enum avfm_frame_type_e { AVFM_AUDIO_A52, AVFM_VIDEO, AVFM_AUDIO_PCM };
+struct avfm_s {
+    enum avfm_frame_type_e frame_type; /* This this matching frame belong inside an audio or video frame? */
+    int64_t audio_pts; /* 27MHz */
+    int64_t video_pts; /* 27MHz */
+};
+
+__inline__ void avfm_init(struct avfm_s *s, enum avfm_frame_type_e frame_type) {
+    s->frame_type = frame_type;
+    s->audio_pts = -1;
+    s->video_pts = -1;
+};
+
+__inline__ void avfm_set_pts_video(struct avfm_s *s, int64_t pts) {
+    s->video_pts = pts;
+}
+
+__inline__ void avfm_set_pts_audio(struct avfm_s *s, int64_t pts) {
+    s->audio_pts = pts;
+}
+
+__inline__ void avfm_dump(struct avfm_s *s) {
+    printf("%s, a:%14" PRIi64 ", v:%14" PRIi64 ", diffabs:%" PRIi64 "\n",
+        s->frame_type == AVFM_AUDIO_A52 ? "A52" :
+        s->frame_type == AVFM_AUDIO_PCM ? "PCM" :
+        s->frame_type == AVFM_VIDEO     ? "  V" : "U",
+        s->audio_pts, s->video_pts,
+        (int64_t)abs(s->audio_pts - s->video_pts));
+}
+
 typedef struct
 {
     int input_stream_id;
-    int64_t pts;
+    int64_t pts; /* PTS time (27MHz) when this frame was received from the capture card. */
+                 /* If audio, or video, regardless. */
+
+    /* Regardless of whether raw_frame is of type audio, or video, we need to contain exact PTS
+     * hardware references, as provided by the hardware. (Units of 27MHz).
+     */
+    struct avfm_s avfm;
+
     void *opaque;
 
     void (*release_data)( void* );

@@ -603,7 +603,7 @@ static void dumpAudio(uint16_t *ptr, int fc, int num_channels)
 static int prbs_inited = 0;
 #endif
 
-static int processAudio(decklink_ctx_t *decklink_ctx, decklink_opts_t *decklink_opts_, IDeckLinkAudioInputPacket *audioframe)
+static int processAudio(decklink_ctx_t *decklink_ctx, decklink_opts_t *decklink_opts_, IDeckLinkAudioInputPacket *audioframe, int64_t videoPTS)
 {
     obe_raw_frame_t *raw_frame = NULL;
     void *frame_bytes;
@@ -620,7 +620,6 @@ static int processAudio(decklink_ctx_t *decklink_ctx, decklink_opts_t *decklink_
                     syslog(LOG_ERR, "Malloc failed\n");
                     goto end;
                 }
-
                 raw_frame->audio_frame.num_samples = audioframe->GetSampleFrameCount();
                 raw_frame->audio_frame.num_channels = decklink_opts_->num_channels;
                 raw_frame->audio_frame.sample_fmt = AV_SAMPLE_FMT_S32P;
@@ -690,6 +689,11 @@ static int processAudio(decklink_ctx_t *decklink_ctx, decklink_opts_t *decklink_
                 BMDTimeValue packet_time;
                 audioframe->GetPacketTime(&packet_time, OBE_CLOCK);
                 raw_frame->pts = packet_time;
+
+                avfm_init(&raw_frame->avfm, AVFM_AUDIO_PCM);
+                avfm_set_pts_video(&raw_frame->avfm, videoPTS);
+                avfm_set_pts_audio(&raw_frame->avfm, packet_time);
+
                 raw_frame->release_data = obe_release_audio_data;
                 raw_frame->release_frame = obe_release_frame;
                 raw_frame->input_stream_id = pair->input_stream_id;
@@ -721,6 +725,12 @@ static int processAudio(decklink_ctx_t *decklink_ctx, decklink_opts_t *decklink_
                 BMDTimeValue packet_time;
                 audioframe->GetPacketTime(&packet_time, OBE_CLOCK);
                 raw_frame->pts = packet_time;
+
+                avfm_init(&raw_frame->avfm, AVFM_AUDIO_A52);
+                avfm_set_pts_video(&raw_frame->avfm, videoPTS);
+                avfm_set_pts_audio(&raw_frame->avfm, packet_time);
+                //avfm_dump(&raw_frame->avfm);
+
                 raw_frame->release_data = obe_release_audio_data;
                 raw_frame->release_frame = obe_release_frame;
                 raw_frame->input_stream_id = pair->input_stream_id;
@@ -1382,6 +1392,15 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
                     raw_frame->input_stream_id = decklink_ctx->device->streams[i]->input_stream_id;
             }
 
+            /* We're guaranteed to have a audio frame. */
+            BMDTimeValue packet_time;
+            audioframe->GetPacketTime(&packet_time, OBE_CLOCK);
+
+            avfm_init(&raw_frame->avfm, AVFM_VIDEO);
+            avfm_set_pts_video(&raw_frame->avfm, decklink_ctx->stream_time);
+            avfm_set_pts_audio(&raw_frame->avfm, packet_time);
+            //avfm_dump(&raw_frame->avfm);
+
 #if FRAME_CACHING
             cache_video_frame(raw_frame);
 #endif
@@ -1428,7 +1447,7 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
 
     if( audioframe && !decklink_opts_->probe )
     {
-        processAudio(decklink_ctx, decklink_opts_, audioframe);
+        processAudio(decklink_ctx, decklink_opts_, audioframe, decklink_ctx->stream_time);
     }
 
 end:
