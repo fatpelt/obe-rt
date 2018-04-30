@@ -832,6 +832,39 @@ time_t        g_decklink_fake_lost_payload_time = 0;
 static int    g_decklink_fake_lost_payload_interval = 60;
 static int    g_decklink_fake_lost_payload_state = 0;
 
+#define FRAME_CACHING 0
+#if FRAME_CACHING
+static obe_raw_frame_t *copy_raw_frame(obe_raw_frame_t *frame)
+{
+    obe_raw_frame_t *f = new_raw_frame();
+
+    memcpy(f, frame, sizeof(*frame));
+
+    for (int i = 0; i < 1; i++) {
+        if (f->alloc_img.plane[i]) {
+            f->alloc_img.plane[i] = (uint8_t *)calloc(1, 4 * 1048576);
+            memcpy(f->alloc_img.plane[i], frame->alloc_img.plane[i],
+                f->alloc_img.width * f->alloc_img.height * 2);
+        }
+    }
+
+    memcpy(&f->img, &f->alloc_img, sizeof(frame->alloc_img));
+
+    return f;
+}
+
+static obe_raw_frame_t *cached = NULL;
+static void cache_video_frame(obe_raw_frame_t *frame)
+{
+    if (cached != NULL) {
+        cached->release_data(cached);
+        cached->release_frame(cached);
+    }
+
+    cached = copy_raw_frame(frame);
+}
+#endif
+
 HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFrame *videoframe, IDeckLinkAudioInputPacket *audioframe )
 {
     decklink_ctx_t *decklink_ctx = &decklink_opts_->decklink_ctx;
@@ -974,7 +1007,7 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
         return S_OK;
     }
 
-#define DROP_N_FRAMES_ON_DEMAND 0
+#define DROP_N_FRAMES_ON_DEMAND 1
 
 #if DROP_N_FRAMES_ON_DEMAND
     /* Drop N frames on demand. */
@@ -1103,9 +1136,25 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
                 printf("Decklink card index %i: No frame received for %"PRIi64" ms",
                        decklink_opts_->card_idx,
                        (cur_frame_time - decklink_ctx->last_frame_time) / 1000 );
+#if FRAME_CACHING
+                int clocks_missed = (cur_frame_time - decklink_ctx->last_frame_time) * 27;
+                printf("Injected cached frames for %d missed, duration %" PRIi64 "\n", clocks_missed, frame_duration);
+                printf("Injected cached frame %d\n", clocks_missed / frame_duration);
+
+                for (int x = 1; x < (clocks_missed / frame_duration); x++) {
+                    printf("Injecting copy %d\n", x);
+                    obe_raw_frame_t *f = copy_raw_frame(cached);
+                    f->pts += (x * frame_duration);
+                    add_to_filter_queue(h, f);
+                }
+                pthread_mutex_lock( &h->drop_mutex );
+                h->audio_encoder_drop = h->mux_drop = 1;
+                pthread_mutex_unlock( &h->drop_mutex );
+#else
                 pthread_mutex_lock( &h->drop_mutex );
                 h->video_encoder_drop = h->audio_encoder_drop = h->mux_drop = 1;
                 pthread_mutex_unlock( &h->drop_mutex );
+#endif
             }
 
             decklink_ctx->last_frame_time = cur_frame_time;
@@ -1332,6 +1381,10 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
                 if( decklink_ctx->device->streams[i]->stream_format == VIDEO_UNCOMPRESSED )
                     raw_frame->input_stream_id = decklink_ctx->device->streams[i]->input_stream_id;
             }
+
+#if FRAME_CACHING
+            cache_video_frame(raw_frame);
+#endif
 
             if( add_to_filter_queue( h, raw_frame ) < 0 )
                 goto fail;
