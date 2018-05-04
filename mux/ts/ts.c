@@ -811,7 +811,7 @@ void *open_muxer( void *ptr )
                 if (coded_frame->discontinuity_hz) {
 
                     int64_t v = coded_frame->real_dts - coded_frame->pts;
-                    printf("V: pts %12" PRIi64 " coded_pts %12" PRIi64 " diff: %12" PRIi64 " discontinuity: %" PRIi64 "\n",
+                    printf("[MUX] Video Adjustment: pts %12" PRIi64 " coded_pts %12" PRIi64 " diff: %12" PRIi64 " discontinuity of: %" PRIi64 "\n",
                         coded_frame->pts, coded_frame->real_dts, v / 300, coded_frame->discontinuity_hz);
 
                     video_drift_correction += coded_frame->discontinuity_hz;
