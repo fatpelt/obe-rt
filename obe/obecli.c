@@ -1053,6 +1053,12 @@ extern int64_t initial_audio_latency;
 extern int64_t audio_drift_correction;
 extern int64_t video_drift_correction;
 
+/* Mux Smoother */
+extern int64_t g_mux_smoother_last_item_count;
+extern int64_t g_mux_smoother_last_total_item_size;
+extern int64_t g_mux_smoother_fifo_pcr_size;
+extern int64_t g_mux_smoother_fifo_data_size;
+
 void display_variables()
 {
     printf("sdi_input.fake_60sec_lost_payload = %d [%s]\n", g_decklink_fake_lost_payload,
@@ -1075,6 +1081,14 @@ void display_variables()
     printf("ts_mux.audio_drift_correction = %" PRIi64 "  %" PRIi64 "(ms)\n",
         audio_drift_correction,
         audio_drift_correction / 27000);
+    printf("mux_smoother.last_item_count  = %" PRIi64 "\n",
+        g_mux_smoother_last_item_count);
+    printf("mux_smoother.last_total_item_size  = %" PRIi64 " (bytes)\n",
+        g_mux_smoother_last_total_item_size);
+    printf("mux_smoother.fifo_pcr_size         = %" PRIi64 " (bytes)\n",
+        g_mux_smoother_fifo_pcr_size);
+    printf("mux_smoother.fifo_data_size        = %" PRIi64 " (bytes)\n",
+        g_mux_smoother_fifo_data_size);
 
 }
 

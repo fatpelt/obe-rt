@@ -961,7 +961,7 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
             char t[160];
             sprintf(t, "%s", ctime(&now));
             t[strlen(t) - 1] = 0;
-            printf("%s -- decklink a/v ratio loss is %f\n", t, diff);
+            //printf("%s -- decklink a/v ratio loss is %f\n", t, diff);
             /* If loss of a/v frames vs full frames (with a+v) falls below 75%, exit. */
             /* Based on observed condition, the loss quickly reaches 50%, hence 75% is very safe. */
             if (diff > 0 && diff / g_decklink_fake_every_other_frame_lose_video_count < 0.75) {
@@ -1150,7 +1150,6 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
                 int clocks_missed = (cur_frame_time - decklink_ctx->last_frame_time) * 27;
                 printf("Injected cached frames for %d missed, duration %" PRIi64 "\n", clocks_missed, frame_duration);
                 printf("Injected cached frame %d\n", clocks_missed / frame_duration);
-
                 for (int x = 1; x < (clocks_missed / frame_duration); x++) {
                     printf("Injecting copy %d\n", x);
                     obe_raw_frame_t *f = copy_raw_frame(cached);

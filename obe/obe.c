@@ -250,6 +250,23 @@ int add_to_queue( obe_queue_t *queue, void *item )
     return 0;
 }
 
+int remove_from_queue_without_lock(obe_queue_t *queue)
+{
+    void **tmp;
+
+    if (queue->size > 1)
+        memmove(&queue->queue[0], &queue->queue[1], sizeof(*queue->queue) * (queue->size-1));
+    tmp = realloc(queue->queue, sizeof(*queue->queue) * (queue->size-1));
+    queue->size--;
+    if (!tmp && queue->size) {
+        syslog(LOG_ERR, "Malloc failed\n");
+        return -1;
+    }
+    queue->queue = tmp;
+
+    return 0;
+}
+
 int remove_from_queue( obe_queue_t *queue )
 {
     void **tmp;

@@ -334,12 +334,14 @@ enum avfm_frame_type_e { AVFM_AUDIO_A52, AVFM_VIDEO, AVFM_AUDIO_PCM };
 struct avfm_s {
     enum avfm_frame_type_e frame_type; /* This this matching frame belong inside an audio or video frame? */
     int64_t audio_pts; /* 27MHz */
+    int64_t audio_pts_corrected; /* 27MHz */
     int64_t video_pts; /* 27MHz */
 };
 
 __inline__ void avfm_init(struct avfm_s *s, enum avfm_frame_type_e frame_type) {
     s->frame_type = frame_type;
     s->audio_pts = -1;
+    s->audio_pts_corrected = -1;
     s->video_pts = -1;
 };
 
@@ -351,12 +353,17 @@ __inline__ void avfm_set_pts_audio(struct avfm_s *s, int64_t pts) {
     s->audio_pts = pts;
 }
 
+__inline__ void avfm_set_pts_audio_corrected(struct avfm_s *s, int64_t pts) {
+    s->audio_pts_corrected = pts;
+}
+
 __inline__ void avfm_dump(struct avfm_s *s) {
-    printf("%s, a:%14" PRIi64 ", v:%14" PRIi64 ", diffabs:%" PRIi64 "\n",
+    printf("%s, a:%14" PRIi64 ", v:%14" PRIi64 ", ac:%14" PRIi64 ", diffabs:%" PRIi64 "\n",
         s->frame_type == AVFM_AUDIO_A52 ? "A52" :
         s->frame_type == AVFM_AUDIO_PCM ? "PCM" :
         s->frame_type == AVFM_VIDEO     ? "  V" : "U",
         s->audio_pts, s->video_pts,
+        s->audio_pts_corrected,
         (int64_t)abs(s->audio_pts - s->video_pts));
 }
 
@@ -464,6 +471,8 @@ typedef struct
      * Its a 27MHz clock.
      */
     int64_t discontinuity_hz;
+
+    struct avfm_s avfm;
 
     int64_t pts;
 
@@ -601,6 +610,7 @@ void add_device( obe_t *h, obe_device_t *device );
 
 int add_to_queue( obe_queue_t *queue, void *item );
 int remove_from_queue( obe_queue_t *queue );
+int remove_from_queue_without_lock(obe_queue_t *queue);
 int remove_item_from_queue( obe_queue_t *queue, void *item );
 
 int add_to_filter_queue( obe_t *h, obe_raw_frame_t *raw_frame );

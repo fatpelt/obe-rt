@@ -24,8 +24,11 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <assert.h>
+#include <libavutil/mathematics.h>
+
 #include "smpte337_detector2.h"
 #include "common/common.h"
+#include "encoders/audio/ac3bitstream/hexdump.h"
 
 struct smpte337_detector2_item_s
 {
@@ -41,10 +44,19 @@ struct smpte337_detector2_item_s
 static struct smpte337_detector2_item_s *_item_alloc(int maxlen)
 {
 	struct smpte337_detector2_item_s *i = calloc(1, sizeof(*i));
+	if (!i)
+		return NULL;
+
 	i->ptr = malloc(maxlen);
+	if (!i->ptr) {
+		free(i);
+		return NULL;
+	}
+
 	i->maxlen = maxlen;
 	i->usedlen = 0;
 	i->readpos = 0;
+
 	return i;
 }
 
@@ -75,7 +87,7 @@ static void _list_empty(struct smpte337_detector2_s *ctx)
 	pthread_mutex_unlock(&ctx->itemListMutex);
 }
 
-static int _list_peek(struct smpte337_detector2_s *ctx, unsigned char *buf, int byteCount, int updateCounters, struct avfm_s *avfm)
+static int _list_peek(struct smpte337_detector2_s *ctx, unsigned char *buf, int byteCount, int updateCounters, struct avfm_s *avfm, int *readpos)
 {
 	int copied_timing = 0;
 	int len = 0;
@@ -94,7 +106,10 @@ static int _list_peek(struct smpte337_detector2_s *ctx, unsigned char *buf, int 
 		if (e->usedlen - e->readpos >= rem) {
 			memcpy(buf + len, e->ptr + e->readpos, rem);
 			len += rem;
-			memcpy(avfm, &e->avfm, sizeof(e->avfm));
+			if (copied_timing++ == 0) {
+				memcpy(avfm, &e->avfm, sizeof(e->avfm));
+				*readpos = e->readpos;
+			}
 
 			if (updateCounters) {
 				e->readpos += rem;
@@ -116,8 +131,10 @@ static int _list_peek(struct smpte337_detector2_s *ctx, unsigned char *buf, int 
 		len += rem;
 
 		/* Return the earliest timing information along with this buffer. */
-		if (copied_timing++ == 0)
+		if (copied_timing++ == 0) {
+			*readpos = e->readpos;
 			memcpy(avfm, &e->avfm, sizeof(e->avfm));
+		}
 
 		if (updateCounters) {
 			e->readpos += rem;
@@ -139,7 +156,7 @@ static int _list_peek(struct smpte337_detector2_s *ctx, unsigned char *buf, int 
 	return len;
 }
 
-static size_t _list_read_alloc(struct smpte337_detector2_s *ctx, unsigned char **payload, int byteCount, struct avfm_s *avfm)
+static size_t _list_read_alloc(struct smpte337_detector2_s *ctx, unsigned char **payload, int byteCount, struct avfm_s *avfm, int *readpos)
 {
 	/* Caller is responsible for its destruction. */
 	unsigned char *buf = malloc(byteCount);
@@ -148,7 +165,7 @@ static size_t _list_read_alloc(struct smpte337_detector2_s *ctx, unsigned char *
 
 	*payload = buf;
 
-	return _list_peek(ctx, buf, byteCount, 1, avfm);
+	return _list_peek(ctx, buf, byteCount, 1, avfm, readpos);
 }
 
 /* Discard byteCount bytes from the list. */
@@ -156,7 +173,8 @@ static int _list_discard(struct smpte337_detector2_s *ctx, int byteCount)
 {
 	unsigned char buf[128];
 	struct avfm_s avfm;
-	int r = _list_peek(ctx, &buf[0], byteCount, 1, &avfm);
+	int readpos;
+	int r = _list_peek(ctx, &buf[0], byteCount, 1, &avfm, &readpos);
 
 	return r;
 }
@@ -232,14 +250,15 @@ static void run_detector(struct smpte337_detector2_s *ctx)
 #define PEEK_LEN 16
 	uint8_t dat[PEEK_LEN];
 	struct avfm_s avfm;
-	if (_list_peek(ctx, &dat[0], PEEK_LEN, 0, &avfm) < PEEK_LEN)
+	int readpos;
+	if (_list_peek(ctx, &dat[0], PEEK_LEN, 0, &avfm, &readpos) < PEEK_LEN)
 		return;
 
 	while(1) {
 		if (ctx->itemListTotalBytes < PEEK_LEN)
 			break;
 
-		if (_list_peek(ctx, &dat[0], PEEK_LEN, 0, &avfm) < PEEK_LEN)
+		if (_list_peek(ctx, &dat[0], PEEK_LEN, 0, &avfm, &readpos) < PEEK_LEN)
 			break;
 
 		/* Find the supported patterns - In this case, AC3 only in 16bit mode */
@@ -263,19 +282,41 @@ static void run_detector(struct smpte337_detector2_s *ctx)
 				uint32_t payload_byteCount = payload_bitCount / 8;
 				
 				if (ctx->itemListTotalBytes >= (8 + payload_byteCount)) {
+					int processedCallback = 0;
 					unsigned char *payload = NULL;
-					size_t l = _list_read_alloc(ctx, &payload, 8 + payload_byteCount, &avfm);
+					size_t l = _list_read_alloc(ctx, &payload, 8 + payload_byteCount, &avfm, &readpos);
 					if (l != (8 + payload_byteCount)) {
 						fprintf(stderr, "[smpte337_detector2] Warning, list read failure.\n");
 
 						/* Intensionally flush the ring and start acquisition again. */
 						_list_empty(ctx);
 					} else {
+						/* Calculate frame PTS plus sample offset, for a given rate, for accurate PTS
+						 * timing generation.
+						 */
+						readpos = readpos / 4;
+						int64_t pts = av_rescale_q(readpos, (AVRational){1, 48000}, (AVRational){1, OBE_CLOCK});
+//						static int64_t oldpts = 0;
+						int64_t newpts = avfm.audio_pts + pts;
+
+						/* We've calculated the exact PTS for the AC3 frame, including its offset from the frame start. */
+						avfm_set_pts_audio_corrected(&avfm, newpts);
+#if 0
+						printf("Offset PTS = %12" PRIi64 ".... readpos %12d, new audio PTS %12" PRIi64 " (%12" PRIi64 ")\n", pts, readpos,
+							newpts, newpts - oldpts);
+						//hexdump(&payload[0] + 8, 8, 8);
+#endif
+//						oldpts = newpts;
 						handleCallback(ctx, (dat[5] >> 5) & 0x03, dat[5] & 0x1f,
 							payload_bitCount, (uint8_t *)payload + 8, &avfm);
+
+						processedCallback = 1;
 					}
 					if (payload)
 						free(payload);
+
+					if (processedCallback)
+						break;
 				} else {
 					/* Not enough data in the ring buffer, come back next time. */
 					break;

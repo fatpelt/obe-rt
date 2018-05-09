@@ -26,6 +26,7 @@
 
 #include "common/common.h"
 #include "encoders/audio/audio.h"
+#include "hexdump.h"
 
 #define USE_DETECTOR2 1
 
@@ -159,8 +160,10 @@ static void * detector_callback(void *user_context,
 	obe_encoder_t *encoder = enc_params->encoder;
 	uint32_t payload_byteCount = payload_bitCount / 8;
 
+#if 0
 	printf("AC3 callback.... avfm timing between audio frames is %d\n", abs(avfm->audio_pts - g_avfm.audio_pts));
 	avfm_dump(avfm);
+#endif
 
 	memcpy(&g_avfm, avfm, sizeof(*avfm));
 
@@ -193,7 +196,7 @@ static void * detector_callback(void *user_context,
 		/* Reduce AC3 monitoring window from 4064ms (125 + 2 frames) to 4012ms (125.5 frames.).
 		 * This improves occasional lost single frames that are not being detected.
 		 */
-#if 1
+#if 0
 		time_t rn = time(0);
 		printf("ac3 window expired: %s", ctime(&rn));
 		extern void display_variables();
@@ -205,7 +208,7 @@ static void * detector_callback(void *user_context,
 			discontinuity_hz = (us - 4000000) * 27; /* We need this in a 27MHz clock. */
 
 			const char *ts = obe_ascii_datetime();
-			printf("%s() %s -- us = %" PRIi64 " a/disc = %" PRIi64 "\n", __func__, ts, us, discontinuity_hz);
+			//printf("%s() %s -- us = %" PRIi64 " a/disc = %" PRIi64 "\n", __func__, ts, us, discontinuity_hz);
 			free((void *)ts);
 		}
 		
@@ -273,11 +276,19 @@ static void * detector_callback(void *user_context,
 		return 0;
 	}
 
+#if 0
+	printf("[AC3] abs(cur_pts - avfm.audio_pts) = %12d (ms), abs(cur_pts - avfm.video_pts) = %12d (ms)\n",
+		(cur_pts - avfm->audio_pts) / 27000,
+		(cur_pts - avfm->video_pts) / 27000);
+#endif
+
+	cur_pts = avfm->audio_pts_corrected;
 	cf->pts = cur_pts + (ac3_offset_ms * 27000);
 	cf->type = CF_AUDIO;
 	cf->random_access = 1; /* Every frame output is a random access point */
-	cf->discontinuity_hz = discontinuity_hz;
+	//cf->discontinuity_hz = discontinuity_hz;
 	memcpy(cf->data, payload, payload_byteCount);
+	memcpy(&cf->avfm, avfm, sizeof(*avfm));
 	cf->len = payload_byteCount;
 
 	add_to_queue(&h->mux_queue, cf);
@@ -351,7 +362,6 @@ static void *start_encoder_ac3bitstream(void *ptr)
 			frm->audio_frame.sample_fmt,
 			frm->input_stream_id);
 		hexdump((uint8_t *)frm->audio_frame.audio_data[0], 32, 32);
-		avfm_dump(&frm->avfm);
 #endif
 
 		/* Channel span is always two according to the spec. We've written the code so it can vary. */
