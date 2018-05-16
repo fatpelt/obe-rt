@@ -28,13 +28,7 @@
 #include "encoders/audio/audio.h"
 #include "hexdump.h"
 
-#define USE_DETECTOR2 1
-
-#if USE_DETECTOR2
 #include "input/sdi/smpte337_detector2.h"
-#else
-#include "input/sdi/smpte337_detector.h"
-#endif
 
 #ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
 #include <libklmonitoring/klmonitoring.h>
@@ -139,19 +133,9 @@ static int validateCRC(uint8_t *buf, uint32_t buflen)
 	return ret;
 }
 
-#if USE_DETECTOR2
 static void * detector_callback(void *user_context,
         struct smpte337_detector2_s *ctx,
         uint8_t datamode, uint8_t datatype, uint32_t payload_bitCount, uint8_t *payload, struct avfm_s *avfm)
-#else
-/* We're going to be handed a SMPTE337 bitstream, including the header.
- * It might be AC3, or it could very well be something else, check it.
- * Assuming its AC3, repackage and forward it to the muxer.
- */
-static void * detector_callback(void *user_context,
-        struct smpte337_detector_s *ctx,
-        uint8_t datamode, uint8_t datatype, uint32_t payload_bitCount, uint8_t *payload)
-#endif
 {
 	obe_aud_enc_params_t *enc_params = user_context;
 	obe_t *h = enc_params->h;
@@ -232,11 +216,7 @@ static void *start_encoder_ac3bitstream(void *ptr)
 #endif
 
 	/* We need a bitstream SMPTE337 slicer to do our bidding.... */
-#if USE_DETECTOR2
         struct smpte337_detector2_s *smpte337_detector2 = smpte337_detector2_alloc((smpte337_detector2_callback)detector_callback, ptr);
-#else
-        struct smpte337_detector_s *smpte337_detector = smpte337_detector_alloc((smpte337_detector_callback)detector_callback, ptr);
-#endif
 
 #ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
 	struct kl_histogram audio_passthrough;
@@ -302,21 +282,12 @@ static void *start_encoder_ac3bitstream(void *ptr)
 		kl_histogram_sample_begin(&audio_passthrough);
 #endif
 
-#if USE_DETECTOR2
 		size_t l = smpte337_detector2_write(smpte337_detector2, (uint8_t *)frm->audio_frame.audio_data[0],
 			frm->audio_frame.num_samples,
 			depth,
 			channels,
 			channels * (depth / 8),
 			span, &frm->avfm);
-#else
-		size_t l = smpte337_detector_write(smpte337_detector, (uint8_t *)frm->audio_frame.audio_data[0],
-			frm->audio_frame.num_samples,
-			depth,
-			channels,
-			channels * (depth / 8),
-			span);
-#endif
 		if (l <= 0) {
 			syslog(LOG_ERR, "[AC3] AC3Bitstream write() failed\n");
 		}
@@ -334,13 +305,8 @@ static void *start_encoder_ac3bitstream(void *ptr)
 		remove_from_queue(&encoder->queue);
 	}
 
-#if USE_DETECTOR2
 	if (smpte337_detector2)
 		smpte337_detector2_free(smpte337_detector2);
-#else
-	if (smpte337_detector)
-		smpte337_detector_free(smpte337_detector);
-#endif
 
 	free(enc_params);
 
