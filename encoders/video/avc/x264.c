@@ -349,7 +349,7 @@ printf("Malloc failed\n");
             memcpy(&coded_frame->avfm, avfm, sizeof(*avfm));
             coded_frame->pts                       = coded_frame->avfm.audio_pts;
             //avfm_dump(avfm);
-#if 1
+
             /* The audio and video clocks jump with different intervals when the cable
              * is disconnected, suggestedint a BM firmware bug.
              * We'll use the audio clock regardless, for both audio and video compressors.
@@ -366,14 +366,6 @@ printf("Malloc failed\n");
             coded_frame->real_pts = new_pts;
             coded_frame->cpb_initial_arrival_time = new_dts;
             coded_frame->cpb_final_arrival_time   = new_dts + abs(pic_out.hrd_timing.cpb_final_arrival_time - pic_out.hrd_timing.cpb_final_arrival_time);
-
-//printf("final,%" PRIi64 "\n", coded_frame->cpb_final_arrival_time);
-//printf("pts,%" PRIi64 "\n", coded_frame->real_pts);
-//printf("vpts %" PRIi64 " suggested pts:%" PRIi64 " (%" PRIi64 ")\n",
-//    pic_out.hrd_timing.dpb_output_time, coded_frame->real_pts,
-//    pic_out.hrd_timing.dpb_output_time - coded_frame->real_pts);
-#endif
-
 
             cpb_removal_time = coded_frame->real_pts; /* Only used for manually eyeballing the video output clock. */
             coded_frame->random_access = pic_out.b_keyframe;
