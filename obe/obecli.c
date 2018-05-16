@@ -27,6 +27,7 @@
 #include <math.h>
 #include <assert.h>
 #include <getopt.h>
+#include <include/DeckLinkAPIVersion.h>
 
 #include <signal.h>
 #define _GNU_SOURCE
@@ -1767,6 +1768,7 @@ static void _usage(const char *prog, int exitcode)
     printf("Including Kernel Labs enhancements.\n");
     printf("Version 1.8 (" GIT_VERSION ")\n");
     printf("x264 build#%d (%dbit support)\n", X264_BUILD, X264_BIT_DEPTH);
+    printf("Decklink SDK %s\n", BLACKMAGIC_DECKLINK_API_VERSION_STRING);
     printf("\n");
 
     if (exitcode) {
