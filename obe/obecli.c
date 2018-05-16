@@ -1053,7 +1053,7 @@ static int set_outputs( char *command, obecli_command_t *child )
     return 0;
 }
 
-
+#if DO_SET_VARIABLE
 /* Case 1 */
 extern int g_decklink_fake_lost_payload;
 extern time_t g_decklink_fake_lost_payload_time;
@@ -1142,6 +1142,7 @@ static int set_variable(char *command, obecli_command_t *child)
 
     return 0;
 }
+#endif
 
 static void display_verbose()
 {
