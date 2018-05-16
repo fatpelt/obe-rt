@@ -1050,8 +1050,6 @@ extern int64_t ac3_offset_ms;
 
 /* Mux */
 extern int64_t initial_audio_latency;
-extern int64_t audio_drift_correction;
-extern int64_t video_drift_correction;
 
 /* Mux Smoother */
 extern int64_t g_mux_smoother_last_item_count;
@@ -1075,12 +1073,6 @@ void display_variables()
         (cur_pts - cpb_removal_time) / 27000);
 
     printf("ts_mux.initial_audio_latency  = %" PRIi64 "\n", initial_audio_latency);
-    printf("ts_mux.video_drift_correction = %" PRIi64 "  %" PRIi64 "(ms)\n",
-        video_drift_correction,
-        video_drift_correction / 27000);
-    printf("ts_mux.audio_drift_correction = %" PRIi64 "  %" PRIi64 "(ms)\n",
-        audio_drift_correction,
-        audio_drift_correction / 27000);
     printf("mux_smoother.last_item_count  = %" PRIi64 "\n",
         g_mux_smoother_last_item_count);
     printf("mux_smoother.last_total_item_size  = %" PRIi64 " (bytes)\n",

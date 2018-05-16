@@ -342,8 +342,6 @@ static void encoder_wait( obe_t *h, int output_stream_id )
 }
 
 int64_t initial_audio_latency = -1; /* ticks of 27MHz clock. Amount of audio (in time) we have buffered before the first video frame appeared. */
-int64_t audio_drift_correction = 0; /* ticks of 27MHz clock. As we detect drift we accumulate it here. We use thie to adjust audio clocks. */
-int64_t video_drift_correction = 0; /* ticks of 27MHz clock. As we detect drift we accumulate it here. We use thie to adjust video clocks. */
 
 void *open_muxer( void *ptr )
 {
@@ -805,14 +803,6 @@ void *open_muxer( void *ptr )
         {
             coded_frame = h->mux_queue.queue[i];
 
-            if (coded_frame->type == CF_VIDEO) {
-
-                coded_frame->cpb_initial_arrival_time += video_drift_correction;
-                coded_frame->cpb_final_arrival_time += video_drift_correction;
-                coded_frame->real_dts += video_drift_correction;
-                coded_frame->real_pts += video_drift_correction;
-            }
-
             if (h->verbose_bitmask & MUX__DQ_HEXDUMP) {
                 printf("coded_frame: output_stream_id = %d, type = %d, len = %6d -- ",
                     coded_frame->output_stream_id, coded_frame->type, coded_frame->len);
@@ -854,8 +844,6 @@ void *open_muxer( void *ptr )
                     /* This has always applied equally to audio or 'other' non video frames. */
                     frames[num_frames].dts = coded_frame->pts - first_video_pts + first_video_real_pts;
                     frames[num_frames].pts = coded_frame->pts - first_video_pts + first_video_real_pts;
-                    frames[num_frames].pts += audio_drift_correction;
-                    frames[num_frames].dts += audio_drift_correction;
                 }
 
                 frames[num_frames].dts /= 300;
