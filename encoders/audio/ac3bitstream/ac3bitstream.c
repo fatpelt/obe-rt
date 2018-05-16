@@ -170,48 +170,6 @@ static void * detector_callback(void *user_context,
 	/* Keep track of any lost signal condition inside our AC3 monitoring window. */
 	if (h->audio_encoder_drop) {
 		h->audio_encoder_drop = 0;
-		enc_params->cb_window_lost_signal = 1;
-	}
-
-	/* Detect and measure AC3 packet loss by using a 4000ms 125 ac3-frame monitoring
-	 * window. If it takes longr than 4000ms to collect 125 AC3 frames then we've
-	 * lost data. In which case, compute the loss and send this information downstream
-	 * to the mux by way of the discontinuity_hz field.
-	 * If we detect a loss due to signal loss, ignore the discontinuity, the mux
-	 * already deals with that correction.
-	 */
-	enc_params->cb_window_count++;
-	if (enc_params->cb_window_count == 1) {
-		gettimeofday(&enc_params->cb_window_begin, NULL);
-	} else
-	if (enc_params->cb_window_count > 125 /* 4 seconds of ac3 */) {
-
-		struct timeval now, diff;
-		gettimeofday(&now, NULL);
-
-		obe_timeval_subtract(&diff, &now, &enc_params->cb_window_begin);
-		int64_t us = obe_timediff_to_usecs(&diff);
-
-		/* Reduce AC3 monitoring window from 4064ms (125 + 2 frames) to 4012ms (125.5 frames.).
-		 * This improves occasional lost single frames that are not being detected.
-		 */
-#if 0
-		time_t rn = time(0);
-		printf("ac3 window expired: %s", ctime(&rn));
-		extern void display_variables();
-		display_variables();
-		printf("ac3 window us %" PRIi64 " >= 4012000? %s\n", us, us >= 4012000 ? "YES" : "NO");
-#endif
-
-		if ((enc_params->cb_window_lost_signal == 0) && us >= 4012000) {
-
-			const char *ts = obe_ascii_datetime();
-			//printf("%s() %s -- us = %" PRIi64 " a/disc = %" PRIi64 "\n", __func__, ts, us, discontinuity_hz);
-			free((void *)ts);
-		}
-		
-		enc_params->cb_window_count = 0;
-		enc_params->cb_window_lost_signal = 0;
 	}
 
 #if LOCAL_DEBUG
@@ -314,11 +272,6 @@ static void *start_encoder_ac3bitstream(void *ptr)
 #endif
 	obe_aud_enc_params_t *enc_params = ptr;
 	obe_encoder_t *encoder = enc_params->encoder;
-
-	enc_params->cb_window_begin.tv_sec = 0;
-	enc_params->cb_window_begin.tv_usec = 0;
-	enc_params->cb_window_count = 0;
-	enc_params->cb_window_lost_signal = 0;
 
 #if LOCAL_DEBUG
 	printf("%s() output_stream_id = %d, ptr = %p\n", __func__, encoder->output_stream_id, ptr);

@@ -40,11 +40,6 @@ typedef struct
     int input_sample_format;
     int sample_rate;
     int frames_per_pes;
-
-    struct timeval cb_window_begin;
-    int cb_window_count;
-    int cb_window_lost_signal;
-
 } obe_aud_enc_params_t;
 
 extern const obe_aud_enc_func_t twolame_encoder;
