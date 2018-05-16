@@ -685,6 +685,11 @@ static int set_stream( char *command, obecli_command_t *child )
 
             if( input_stream->stream_type == STREAM_TYPE_VIDEO )
             {
+                if (audio_offset)
+                    cli.output_streams[output_stream_id].audio_offset_ms = atoi(audio_offset);
+                else
+                    cli.output_streams[output_stream_id].audio_offset_ms = 0;
+
                 x264_param_t *avc_param = &cli.output_streams[output_stream_id].avc_param;
 
                 FAIL_IF_ERROR(preset_name && (check_enum_value( preset_name, preset_names) < 0),
