@@ -373,12 +373,6 @@ void *open_muxer( void *ptr )
     param.sched_priority = 99;
     pthread_setschedparam( pthread_self(), SCHED_RR, &param );
 
-    /* Informational only for monitoring queues. We hold min/max values for various drifts.
-     * These are never used to adjust runtime behaviour.
-     */
-    int64_t v_min[3] = {  0xFFFFFFF,  0xFFFFFFF,  0xFFFFFFF };
-    int64_t v_max[3] = { -0xFFFFFFF, -0xFFFFFFF, -0xFFFFFFF };
-
     // TODO sanity check the options
 
     params.ts_type = mux_opts->ts_type;
@@ -726,64 +720,6 @@ void *open_muxer( void *ptr )
         }
 
         //printf("\n START - queuelen %i \n", h->mux_queue.size);
-
-        /* Enumerate all queued frames, calculate first, last audio, video timings. */
-	/* Monitoring/debugging from the obecli interface in realtime using the set verbose (bits) command. */
-        int64_t dts_first = 0xFFFFFFFFFFF;
-        int64_t dts_last = 0;
-        int64_t audio_pts_first = 0xFFFFFFFFFFF;
-        int64_t audio_pts_last = 0;
-        int queued_vframes = 0;
-        int queued_aframes = 0;
-        for (int i = 0; i < h->mux_queue.size; i++) {
-            coded_frame = h->mux_queue.queue[i];
-            if (coded_frame->type == CF_VIDEO) {
-                queued_vframes++;
-                if (coded_frame->real_dts >= dts_last)
-                    dts_last = coded_frame->real_dts;
-                if (coded_frame->real_dts <= dts_first)
-                    dts_first = coded_frame->real_dts;
-            } else {
-                queued_aframes++;
-                if (coded_frame->pts >= audio_pts_last)
-                    audio_pts_last = coded_frame->pts;
-                if (coded_frame->pts <= audio_pts_first)
-                    audio_pts_first = coded_frame->pts;
-            }
-        }
-        if (h->verbose_bitmask & MUX__REPORT_Q) {
-            printf("vframes = %4d, first dts: %12" PRIi64 ", last dts: %12" PRIi64 "\n",
-                queued_vframes, dts_first / 300, dts_last / 300);
-        }
-        if (h->verbose_bitmask & MUX__REPORT_Q && queued_aframes) {
-                printf("aframes = %4d, first pts: %12" PRIi64 ", last pts: %12" PRIi64 " -- initial audio latency %" PRIi64 "(ms)\n",
-                    queued_aframes, audio_pts_first / 300, audio_pts_last / 300, initial_audio_latency / 27000);
-        } else
-        if (h->verbose_bitmask & MUX__REPORT_Q && !queued_aframes) {
-            printf("aframes = %4d, first pts:           NA, last pts:           NA -- audio queued NA\n", queued_aframes);
-        }
-
-        /* Calculate some min/max times between various audio and video clocks on the queue.
-         * Helpful when debugging drift issue, or issues where the queue slowly starts to lose
-         * frames due to upstream LOS.
-         */
-        if (queued_aframes) {
-            int64_t a = (audio_pts_first - dts_first) / 27000;
-            if (a < v_min[0]) v_min[0] = a;
-            if (a > v_max[0]) v_max[0] = a;
-            int64_t b = (audio_pts_last - dts_first) / 27000;
-            if (b < v_min[1]) v_min[1] = b;
-            if (b > v_max[1]) v_max[1] = b;
-            int64_t c = (audio_pts_last - audio_pts_first) / 27000;
-            if (c < v_min[2]) v_min[2] = c;
-            if (c > v_max[2]) v_max[2] = c;
-            if (h->verbose_bitmask & MUX__REPORT_Q) {
-                printf("first audio pts  -  first video dts = %8" PRIi64 "(ms)   %8" PRIi64 "..%8" PRIi64 "\n", a, v_min[0], v_max[0]);
-                printf(" last audio pts  -  first video dts = %8" PRIi64 "(ms)   %8" PRIi64 "..%8" PRIi64 "\n", b, v_min[1], v_max[1]);
-                printf(" last audio pts  -  first audio pts = %8" PRIi64 "(ms)   %8" PRIi64 "..%8" PRIi64 "\n", c, v_min[2], v_max[2]);
-            }
-        }
-	/* End: Monitoring/debugging */
 
 	/* Prpare the 'frames' array with any audio and video frames.
 	 * If we detect any video frames with discontinuities, adjust out video_drift_correction.
