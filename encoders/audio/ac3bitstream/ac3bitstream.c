@@ -30,10 +30,6 @@
 
 #include "input/sdi/smpte337_detector2.h"
 
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-#include <libklmonitoring/klmonitoring.h>
-#endif
-
 #define LOCAL_DEBUG 0
 #if LOCAL_DEBUG
 #include "hexdump.h"
@@ -218,11 +214,6 @@ static void *start_encoder_ac3bitstream(void *ptr)
 	/* We need a bitstream SMPTE337 slicer to do our bidding.... */
         struct smpte337_detector2_s *smpte337_detector2 = smpte337_detector2_alloc((smpte337_detector2_callback)detector_callback, ptr);
 
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-	struct kl_histogram audio_passthrough;
-	int histogram_dump = 0;
-	kl_histogram_reset(&audio_passthrough, "audio ac3 syncframe passthrough", KL_BUCKET_VIDEO);
-#endif
 	obe_aud_enc_params_t *enc_params = ptr;
 	obe_encoder_t *encoder = enc_params->encoder;
 
@@ -278,10 +269,6 @@ static void *start_encoder_ac3bitstream(void *ptr)
 		 */
 		int depth = 32; /* 32 bit samples, data in LSB 16 bits */
 
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-		kl_histogram_sample_begin(&audio_passthrough);
-#endif
-
 		size_t l = smpte337_detector2_write(smpte337_detector2, (uint8_t *)frm->audio_frame.audio_data[0],
 			frm->audio_frame.num_samples,
 			depth,
@@ -291,15 +278,6 @@ static void *start_encoder_ac3bitstream(void *ptr)
 		if (l <= 0) {
 			syslog(LOG_ERR, "[AC3] AC3Bitstream write() failed\n");
 		}
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-		kl_histogram_sample_complete(&audio_passthrough);
-		if (histogram_dump++ > 240) {
-			histogram_dump = 0;
-#if PRINT_HISTOGRAMS
-			kl_histogram_printf(&audio_passthrough);
-#endif
-		}
-#endif
 		frm->release_data(frm);
 		frm->release_frame(frm);
 		remove_from_queue(&encoder->queue);

@@ -32,15 +32,6 @@
 #define WRITE_OSD_VALUE 0
 #define READ_OSD_VALUE 0
 
-#if HAVE_LIBKLMONITORING_KLMONITORING_H
-#define KL_PRBS_INPUT 0
-
-#if KL_PRBS_INPUT
-#include <libklmonitoring/kl-prbs.h>
-#endif
-
-#endif
-
 extern "C"
 {
 #include "common/common.h"
@@ -60,12 +51,6 @@ extern "C"
 #include <assert.h>
 #include <include/DeckLinkAPI.h>
 #include "include/DeckLinkAPIDispatch.cpp"
-
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-#include <libklmonitoring/klmonitoring.h>
-static struct kl_histogram frame_interval;
-static int histogram_dump = 0;
-#endif
 
 #define container_of(ptr, type, member) ({          \
     const typeof(((type *)0)->member)*__mptr = (ptr);    \
@@ -1110,16 +1095,6 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
 
     if( videoframe )
     {
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-        kl_histogram_update(&frame_interval);
-        if (histogram_dump++ > 240) {
-                histogram_dump = 0;
-#if PRINT_HISTOGRAMS
-                kl_histogram_printf(&frame_interval);
-#endif
-        }
-#endif
-
         if( videoframe->GetFlags() & bmdFrameHasNoInputSource )
         {
             syslog( LOG_ERR, "Decklink card index %i: No input signal detected", decklink_opts_->card_idx );
@@ -1764,9 +1739,6 @@ static void * detector_callback(void *user_context,
 
 static int open_card( decklink_opts_t *decklink_opts )
 {
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-    kl_histogram_reset(&frame_interval, "video frame intervals", KL_BUCKET_VIDEO);
-#endif
     decklink_ctx_t *decklink_ctx = &decklink_opts->decklink_ctx;
     int         found_mode;
     int         ret = 0;
