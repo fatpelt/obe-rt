@@ -289,6 +289,21 @@ static char **obe_split_options( const char *opt_str, const char *options[] )
     return opts;
 }
 
+int64_t get_param_audio_offset_ms(obe_t *h)
+{
+    obe_output_stream_t *video_stream = get_output_stream(h, h->encoders[0]->output_stream_id);
+    if (!video_stream)
+        return 0;
+
+printf("returning ms %d\n", video_stream->audio_offset_ms);
+    return video_stream->audio_offset_ms;
+}
+
+int64_t get_param_audio_offset_ticks(obe_t *h)
+{
+    return get_param_audio_offset_ms(h) * 27000;
+}
+
 static char *obe_get_option( const char *name, char **split_options )
 {
     if( !split_options )
