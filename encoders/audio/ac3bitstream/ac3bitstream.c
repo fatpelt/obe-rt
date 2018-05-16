@@ -143,6 +143,17 @@ static void * detector_callback(void *user_context,
 		h->audio_encoder_drop = 0;
 	}
 
+	obe_output_stream_t *output_stream = NULL;
+	for (int i = 1; i < h->num_encoders; i++) {
+		obe_output_stream_t *os = get_output_stream(h, h->encoders[i]->output_stream_id);
+		if (os->stream_format != AUDIO_AC_3_BITSTREAM)
+			continue;
+
+		/* TODO: Optimize this. This also assumed the first AC3 encoder offset applies to ALL AC3 encoders. */
+		output_stream = os;
+		break;
+	}
+
 #if LOCAL_DEBUG
 	printf("[AC3] ac3encoder:%s(%d) --\n", __func__, payload_byteCount);
 	hexdump(payload, 32, 32);
@@ -194,6 +205,11 @@ static void * detector_callback(void *user_context,
 
 	cur_pts = avfm->audio_pts_corrected;
 	cf->pts = cur_pts + (ac3_offset_ms * 27000);
+
+	if (output_stream) {
+		cf->pts += ((int64_t)output_stream->audio_offset_ms * 27000);
+	}
+
 	cf->type = CF_AUDIO;
 	cf->random_access = 1; /* Every frame output is a random access point */
 	memcpy(cf->data, payload, payload_byteCount);
