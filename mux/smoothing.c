@@ -32,6 +32,8 @@ int64_t g_mux_smoother_last_total_item_size = 0;
 int64_t g_mux_smoother_fifo_pcr_size = 0;
 int64_t g_mux_smoother_fifo_data_size = 0;
 
+#define LOCAL_DEBUG 0
+
 static void *mux_start_smoothing( void *ptr )
 {
     obe_t *h = ptr;
@@ -137,16 +139,11 @@ printf("removing item %d of %d\n", i, num_muxed_data);
          */
         if( !buffer_complete )
         {
-printf("num_muxed_data %d\n", num_muxed_data);
             start_data = h->mux_smoothing_queue.queue[0];
             end_data = h->mux_smoothing_queue.queue[num_muxed_data-1];
 
             start_pcr = start_data->pcr_list[0];
             end_pcr = end_data->pcr_list[(end_data->len / 188)-1];
-printf("end_pcr %" PRIi64 " - start_pcr %" PRIi64 " = %" PRIi64 "\n",
-  end_pcr,
-  start_pcr,
-  end_pcr - start_pcr);
             if( end_pcr - start_pcr >= temporal_vbv_size )
             {
                 buffer_complete = 1;
@@ -160,9 +157,11 @@ printf("Not yet complete.\n");
             }
         }
 
+#if LOCAL_DEBUG
         const char *ts = obe_ascii_datetime();
         printf("[Mux-Smoother] smoothing %i frames @ %s\n", num_muxed_data, ts);
         free((void *)ts);
+#endif
 
         /* Copy all queued frames into a new allocation. Is this credible if we have a massie queue? */
         /* Allocate an array of obe_muxed_data_t objects (muxed_data), clone the entire queue... */
@@ -176,9 +175,11 @@ printf("Not yet complete.\n");
         memcpy( muxed_data, h->mux_smoothing_queue.queue, num_muxed_data * sizeof(*muxed_data) );
         pthread_mutex_unlock( &h->mux_smoothing_queue.mutex );
 
+#if LOCAL_DEBUG
         printf("[Mux-Smoother] fifo_data size %d, num_muxed_data %d\n", av_fifo_size(fifo_data), num_muxed_data);
         printf("[Mux-Smoother] start_pcr %" PRIi64 "  end_pcr %" PRIi64 "  cur_pcr %" PRIi64 " t_vbv_size %" PRIi64 "\n",
             start_pcr, end_pcr, cur_pcr, temporal_vbv_size);
+#endif
 
         g_mux_smoother_fifo_pcr_size = av_fifo_size(fifo_pcr);
         g_mux_smoother_fifo_data_size = av_fifo_size(fifo_data);
