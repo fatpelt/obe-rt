@@ -126,13 +126,8 @@ static void *start_encoder( void *ptr )
     x264_nal_t *nal;
     int i_nal, frame_size = 0;
     int64_t pts = 0, arrival_time = 0, frame_duration, buffer_duration;
-#define AVFM 1
 
-#if AVFM
     struct avfm_s *avfm;
-#else
-    int64_t *pts2;
-#endif
     float buffer_fill;
     obe_raw_frame_t *raw_frame;
     obe_coded_frame_t *coded_frame;
@@ -248,7 +243,6 @@ printf("Malloc failed\n");
 
         current_raw_frame_pts = raw_frame->pts;
 
-#if AVFM
         avfm = malloc(sizeof(struct avfm_s));
         if (!avfm) {
             printf("Malloc failed\n");
@@ -258,17 +252,6 @@ printf("Malloc failed\n");
         memcpy(avfm, &raw_frame->avfm, sizeof(raw_frame->avfm));
         //avfm_dump(avfm);
         pic.opaque = avfm;
-#else
-        pts2 = malloc( sizeof(int64_t) );
-        if( !pts2 )
-        {
-printf("Malloc failed\n");
-            syslog( LOG_ERR, "Malloc failed\n" );
-            break;
-        }
-        pts2[0] = raw_frame->pts;
-        pic.opaque = pts2;
-#endif
         pic.param = NULL;
 
         /* If the AFD has changed, then change the SAR. x264 will write the SAR at the next keyframe
@@ -362,7 +345,6 @@ printf("Malloc failed\n");
             coded_frame->real_pts = (pic_out.hrd_timing.dpb_output_time  * 27000000.0);
 #endif
 
-#if AVFM
             avfm = pic_out.opaque;
             memcpy(&coded_frame->avfm, avfm, sizeof(*avfm));
             coded_frame->pts                       = coded_frame->avfm.audio_pts;
@@ -394,10 +376,6 @@ printf("Malloc failed\n");
 
 
             cpb_removal_time = coded_frame->real_pts; /* Only used for manually eyeballing the video output clock. */
-#else
-            pts2 = pic_out.opaque;
-            coded_frame->pts = pts2[0];
-#endif
             coded_frame->random_access = pic_out.b_keyframe;
             coded_frame->priority = IS_X264_TYPE_I( pic_out.i_type );
 #if 0
