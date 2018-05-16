@@ -180,17 +180,6 @@ static void * detector_callback(void *user_context,
                 payload);
 #endif
 
-	/* Increment by 2880 90KHz clock ticks, expressed in 27MHz (SCR rate).
-  	 * Or, 32ms of audio, in each packet, matching all of the other broadcaster
-  	 * streams. We need to do this regardless if whether the incoming AC3BITSTREAM
-  	 * frame is good or bad. If the frame fails to validate, we end up warping
-  	 * time too far from the PCR for downstream decoders. Warping time
-  	 * results in downstream decoders no longer playing audio after a "period"
-  	 * of time, for example when the warp becomes more than 10 seconds.
-  	 */
-#define PTS_TICKS_TO_27MHZ(n)  ((n) * 300)
- 	cur_pts += PTS_TICKS_TO_27MHZ(2880);
-
         if (datatype != 1 /* AC3 */) {
                 fprintf(stderr, "[AC3] Detected SMPTE337 datamode %d, we don't support it.", datamode);
 		return 0;
@@ -222,12 +211,6 @@ static void * detector_callback(void *user_context,
 		syslog(LOG_ERR, "[AC3] ac3encoder: Malloc failed\n");
 		return 0;
 	}
-
-#if 0
-	printf("[AC3] abs(cur_pts - avfm.audio_pts) = %12d (ms), abs(cur_pts - avfm.video_pts) = %12d (ms)\n",
-		(cur_pts - avfm->audio_pts) / 27000,
-		(cur_pts - avfm->video_pts) / 27000);
-#endif
 
 	cur_pts = avfm->audio_pts_corrected;
 	cf->pts = cur_pts + (ac3_offset_ms * 27000);
