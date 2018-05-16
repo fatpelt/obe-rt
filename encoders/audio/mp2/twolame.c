@@ -27,6 +27,7 @@
 #include <libavutil/fifo.h>
 #include <libavresample/avresample.h>
 #include <libavutil/opt.h>
+#include <libavutil/mathematics.h>
 
 #define MP2_AUDIO_BUFFER_SIZE 50000
 
@@ -69,7 +70,6 @@ static void *start_encoder_mp2( void *ptr )
 
     twolame_options *tl_opts = NULL;
     int output_size, frame_size, linesize; /* Linesize in libavresample terminology is the entire buffer size for packed formats */
-    int64_t cur_pts = -1;
     float *audio_buf = NULL;
     uint8_t *output_buf = NULL;
     AVAudioResampleContext *avr = NULL;
@@ -172,9 +172,6 @@ static void *start_encoder_mp2( void *ptr )
                 raw_frame->input_stream_id);
 #endif
 
-        if( cur_pts == -1 )
-            cur_pts = raw_frame->pts;
-
         /* Allocate the output buffer */
         if( av_samples_alloc( (uint8_t**)&audio_buf, &linesize, av_get_channel_layout_nb_channels( raw_frame->audio_frame.channel_layout ),
                               raw_frame->audio_frame.linesize, AV_SAMPLE_FMT_FLT, 0 ) < 0 )
@@ -215,6 +212,9 @@ static void *start_encoder_mp2( void *ptr )
         free( audio_buf );
         audio_buf = NULL;
 
+        struct avfm_s avfm;
+        memcpy(&avfm, &raw_frame->avfm, sizeof(avfm));
+
         raw_frame->release_data( raw_frame );
         raw_frame->release_frame( raw_frame );
         remove_from_queue( &encoder->queue );
@@ -236,13 +236,24 @@ static void *start_encoder_mp2( void *ptr )
                 goto end;
             }
             av_fifo_generic_read( fifo, coded_frame->data, frame_size, NULL );
-            coded_frame->pts = cur_pts;
+            memcpy(&coded_frame->avfm, &avfm, sizeof(avfm));
+
+            /* a = (27000000 / 1000) * 96 - Calculate 96ms in units of a 27MHz clock.
+             * a = 2592000
+             * Output PTS packets (27MHz) are rounded to nearest 96ms interval on a 27MHz clock.
+             */
+            /* The outgoing PTS is rounded and based on recent h/w clock, so massive leaps in
+             * the h/w clock are automatically compensated for.
+             */
+            int64_t rounded_pts = av_rescale(coded_frame->avfm.audio_pts, OBE_CLOCK, 2592000);
+            rounded_pts /= OBE_CLOCK;
+            rounded_pts *= 2592000;
+            coded_frame->pts = rounded_pts;
+
             coded_frame->random_access = 1; /* Every frame output is a random access point */
             coded_frame->type = CF_AUDIO;
 
             add_to_queue( &h->mux_queue, coded_frame );
-            /* We need to generate PTS because frame sizes have changed */
-            cur_pts += (double)MP2_NUM_SAMPLES * OBE_CLOCK * enc_params->frames_per_pes / enc_params->sample_rate;
         }
     }
 
