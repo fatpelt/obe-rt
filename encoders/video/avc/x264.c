@@ -347,8 +347,7 @@ printf("Malloc failed\n");
 
             avfm = pic_out.opaque;
             memcpy(&coded_frame->avfm, avfm, sizeof(*avfm));
-            coded_frame->pts                       = coded_frame->avfm.audio_pts;
-            //avfm_dump(avfm);
+            coded_frame->pts = coded_frame->avfm.audio_pts;
 
             /* The audio and video clocks jump with different intervals when the cable
              * is disconnected, suggestedint a BM firmware bug.
