@@ -1765,7 +1765,7 @@ static void _usage(const char *prog, int exitcode)
 {
     printf("\nOpen Broadcast Encoder command line interface.\n");
     printf("Including Kernel Labs enhancements.\n");
-    printf("Version 1.7 (" GIT_VERSION ")\n");
+    printf("Version 1.8 (" GIT_VERSION ")\n");
     printf("x264 build#%d (%dbit support)\n", X264_BUILD, X264_BIT_DEPTH);
     printf("\n");
 
