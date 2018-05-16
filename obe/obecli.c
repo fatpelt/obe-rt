@@ -295,7 +295,6 @@ int64_t get_param_audio_offset_ms(obe_t *h)
     if (!video_stream)
         return 0;
 
-printf("returning ms %d\n", video_stream->audio_offset_ms);
     return video_stream->audio_offset_ms;
 }
 
