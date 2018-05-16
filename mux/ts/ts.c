@@ -373,16 +373,6 @@ void *open_muxer( void *ptr )
     param.sched_priority = 99;
     pthread_setschedparam( pthread_self(), SCHED_RR, &param );
 
-    /* We're calculating loss between 'last' and 'current' audio/video PTS, we need
-     * to cache the last values for various clocks.
-     */
-#if 0
-    int64_t ltn_last_audio_pts = 0;
-    int64_t ltn_last_audio_dts = 0;
-    int64_t ltn_last_video_pts = 0;
-    int64_t ltn_last_video_dts = 0;
-#endif
-
     /* Informational only for monitoring queues. We hold min/max values for various drifts.
      * These are never used to adjust runtime behaviour.
      */
