@@ -465,12 +465,6 @@ typedef struct
     int output_stream_id;
 
     enum obe_coded_frame_type_e type;
-    /* If an encoder detects a break in the upstream signal, the
-     * calculated amount of payload loss is represented here.
-     * Currently only applies to CF_VIDEO frames.
-     * Its a 27MHz clock.
-     */
-    int64_t discontinuity_hz;
 
     struct avfm_s avfm;
 

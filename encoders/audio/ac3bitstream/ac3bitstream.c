@@ -180,7 +180,6 @@ static void * detector_callback(void *user_context,
 	 * If we detect a loss due to signal loss, ignore the discontinuity, the mux
 	 * already deals with that correction.
 	 */
-	int64_t discontinuity_hz = 0;
 	enc_params->cb_window_count++;
 	if (enc_params->cb_window_count == 1) {
 		gettimeofday(&enc_params->cb_window_begin, NULL);
@@ -205,7 +204,6 @@ static void * detector_callback(void *user_context,
 #endif
 
 		if ((enc_params->cb_window_lost_signal == 0) && us >= 4012000) {
-			discontinuity_hz = (us - 4000000) * 27; /* We need this in a 27MHz clock. */
 
 			const char *ts = obe_ascii_datetime();
 			//printf("%s() %s -- us = %" PRIi64 " a/disc = %" PRIi64 "\n", __func__, ts, us, discontinuity_hz);

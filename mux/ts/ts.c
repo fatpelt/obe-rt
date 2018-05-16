@@ -807,37 +807,10 @@ void *open_muxer( void *ptr )
 
             if (coded_frame->type == CF_VIDEO) {
 
-                /* If the video frame has indicated unexpected loss of signal, bend all future received video frames. */
-                if (coded_frame->discontinuity_hz) {
-
-                    int64_t v = coded_frame->real_dts - coded_frame->pts;
-                    printf("[MUX] Video Adjustment: pts %12" PRIi64 " coded_pts %12" PRIi64 " diff: %12" PRIi64 " discontinuity of: %" PRIi64 "\n",
-                        coded_frame->pts, coded_frame->real_dts, v / 300, coded_frame->discontinuity_hz);
-
-                    video_drift_correction += coded_frame->discontinuity_hz;
-                    coded_frame->discontinuity_hz = 0;
-
-                    /* TODO: I've seen a double free twice. I think it's here but I can't be
-                     * certain. Need to repro lost video / aggressively repro.
-                     */
-                    remove_early_frames(h, coded_frame->real_dts - initial_audio_latency);
-                }    
-
                 coded_frame->cpb_initial_arrival_time += video_drift_correction;
                 coded_frame->cpb_final_arrival_time += video_drift_correction;
                 coded_frame->real_dts += video_drift_correction;
                 coded_frame->real_pts += video_drift_correction;
-            }
-
-            if (coded_frame->type == CF_AUDIO) {
-                /* If the video frame has indicated unexpected loss of signal, bend all future received video frames. */
-                if (coded_frame->discontinuity_hz) {
-                    const char *ts = obe_ascii_datetime();
-                    printf("[MUX] %s -- Audio adjust made of %" PRIi64 " ticks.\n", ts, coded_frame->discontinuity_hz);
-                    free((void *)ts);
-                    audio_drift_correction += coded_frame->discontinuity_hz;
-                    coded_frame->discontinuity_hz = 0;
-                }
             }
 
             if (h->verbose_bitmask & MUX__DQ_HEXDUMP) {
