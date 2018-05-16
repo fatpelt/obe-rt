@@ -216,7 +216,6 @@ static void * detector_callback(void *user_context,
 	cf->pts = cur_pts + (ac3_offset_ms * 27000);
 	cf->type = CF_AUDIO;
 	cf->random_access = 1; /* Every frame output is a random access point */
-	//cf->discontinuity_hz = discontinuity_hz;
 	memcpy(cf->data, payload, payload_byteCount);
 	memcpy(&cf->avfm, avfm, sizeof(*avfm));
 	cf->len = payload_byteCount;
