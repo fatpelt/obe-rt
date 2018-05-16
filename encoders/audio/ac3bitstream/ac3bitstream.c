@@ -48,8 +48,6 @@
 int64_t cur_pts = -1;
 int64_t ac3_offset_ms = 0;
 
-static struct avfm_s g_avfm;
-
 /* Polynomial table for AC3/A52 checksums 16+15+1+1 */
 static const uint16_t crc_tab[] =
 {
@@ -159,13 +157,6 @@ static void * detector_callback(void *user_context,
 	obe_t *h = enc_params->h;
 	obe_encoder_t *encoder = enc_params->encoder;
 	uint32_t payload_byteCount = payload_bitCount / 8;
-
-#if 0
-	printf("AC3 callback.... avfm timing between audio frames is %d\n", abs(avfm->audio_pts - g_avfm.audio_pts));
-	avfm_dump(avfm);
-#endif
-
-	memcpy(&g_avfm, avfm, sizeof(*avfm));
 
 	/* Keep track of any lost signal condition inside our AC3 monitoring window. */
 	if (h->audio_encoder_drop) {
