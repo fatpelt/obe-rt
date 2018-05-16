@@ -378,34 +378,6 @@ printf("Malloc failed\n");
             cpb_removal_time = coded_frame->real_pts; /* Only used for manually eyeballing the video output clock. */
             coded_frame->random_access = pic_out.b_keyframe;
             coded_frame->priority = IS_X264_TYPE_I( pic_out.i_type );
-#if 0
-
-            /* CPB - Codec Picture Buffer -- Buffer containing coded frames or fields */
-            /* DPB - Decoded Picture Buffer -- may be used as reference pictures for inter prediction */
-            static int64_t r = 0, o = 0, i = 0, f = 0;
-            printf("[X264]: cpb_removal(dts):%" PRIi64 " (%" PRIi64 ") dpb_output(pts):%" PRIi64 " (%12" PRIi64 ") cpb_initial:%" PRIi64 " (%" PRIi64 ") cpb_final:%" PRIi64 " (%" PRIi64 ")\n",
-                coded_frame->real_dts,
-                coded_frame->real_dts - r,
-                coded_frame->real_pts,
-                coded_frame->real_pts - o,
-                coded_frame->cpb_initial_arrival_time,
-                coded_frame->cpb_initial_arrival_time - i,
-                coded_frame->cpb_final_arrival_time,
-                coded_frame->cpb_final_arrival_time - f);
-
-#if 0
-            printf("[X264]: cpb_removal(dts):%" PRIi64 "        - dpb_output(pts):%" PRIi64 "  = %" PRIi64 "\n",
-                coded_frame->real_dts,
-                coded_frame->real_pts,
-                coded_frame->real_dts -
-                coded_frame->real_pts);
-#endif
-
-            r = coded_frame->real_dts;
-            o = coded_frame->real_pts;
-            i = coded_frame->cpb_initial_arrival_time;
-            f = coded_frame->cpb_final_arrival_time;
-#endif
             free( pic_out.opaque );
 
             if( h->obe_system == OBE_SYSTEM_TYPE_LOWEST_LATENCY || h->obe_system == OBE_SYSTEM_TYPE_LOW_LATENCY )
