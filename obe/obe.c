@@ -1141,7 +1141,7 @@ int obe_start( obe_t *h )
                     fprintf( stderr, "Couldn't create x264 encode thread\n" );
                     goto fail;
                 }
-                pthread_setname_np(h->encoders[h->num_encoders]->encoder_thread, "obe-vid-encoder");
+                pthread_setname_np(h->encoders[h->num_encoders]->encoder_thread, "obe-x264-encoder");
             }
             else if(h->output_streams[i].stream_format == AUDIO_AC_3_BITSTREAM) {
                 input_stream = get_input_stream(h, h->output_streams[i].input_stream_id);
