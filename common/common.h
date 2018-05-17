@@ -321,6 +321,7 @@ typedef struct
 
 typedef struct
 {
+    char name[128];
     void **queue;
     int  size;
 
@@ -329,10 +330,54 @@ typedef struct
     pthread_cond_t  out_cv;
 } obe_queue_t;
 
+enum avfm_frame_type_e { AVFM_AUDIO_A52, AVFM_VIDEO, AVFM_AUDIO_PCM };
+struct avfm_s {
+    enum avfm_frame_type_e frame_type; /* This this matching frame belong inside an audio or video frame? */
+    int64_t audio_pts; /* 27MHz */
+    int64_t audio_pts_corrected; /* 27MHz */
+    int64_t video_pts; /* 27MHz */
+};
+
+__inline__ void avfm_init(struct avfm_s *s, enum avfm_frame_type_e frame_type) {
+    s->frame_type = frame_type;
+    s->audio_pts = -1;
+    s->audio_pts_corrected = -1;
+    s->video_pts = -1;
+};
+
+__inline__ void avfm_set_pts_video(struct avfm_s *s, int64_t pts) {
+    s->video_pts = pts;
+}
+
+__inline__ void avfm_set_pts_audio(struct avfm_s *s, int64_t pts) {
+    s->audio_pts = pts;
+}
+
+__inline__ void avfm_set_pts_audio_corrected(struct avfm_s *s, int64_t pts) {
+    s->audio_pts_corrected = pts;
+}
+
+__inline__ void avfm_dump(struct avfm_s *s) {
+    printf("%s, a:%14" PRIi64 ", v:%14" PRIi64 ", ac:%14" PRIi64 ", diffabs:%" PRIi64 "\n",
+        s->frame_type == AVFM_AUDIO_A52 ? "A52" :
+        s->frame_type == AVFM_AUDIO_PCM ? "PCM" :
+        s->frame_type == AVFM_VIDEO     ? "  V" : "U",
+        s->audio_pts, s->video_pts,
+        s->audio_pts_corrected,
+        (int64_t)abs(s->audio_pts - s->video_pts));
+}
+
 typedef struct
 {
     int input_stream_id;
-    int64_t pts;
+    int64_t pts; /* PTS time (27MHz) when this frame was received from the capture card. */
+                 /* If audio, or video, regardless. */
+
+    /* Regardless of whether raw_frame is of type audio, or video, we need to contain exact PTS
+     * hardware references, as provided by the hardware. (Units of 27MHz).
+     */
+    struct avfm_s avfm;
+
     void *opaque;
 
     void (*release_data)( void* );
@@ -409,10 +454,25 @@ typedef struct
     obe_queue_t queue;
 } obe_output_t;
 
+enum obe_coded_frame_type_e {
+  CF_UNDEFINED = 0,
+  CF_VIDEO,
+  CF_AUDIO,
+};
+
 typedef struct
 {
     int output_stream_id;
-    int is_video;
+
+    enum obe_coded_frame_type_e type;
+    /* If an encoder detects a break in the upstream signal, the
+     * calculated amount of payload loss is represented here.
+     * Currently only applies to CF_VIDEO frames.
+     * Its a 27MHz clock.
+     */
+    int64_t discontinuity_hz;
+
+    struct avfm_s avfm;
 
     int64_t pts;
 
@@ -444,6 +504,8 @@ struct obe_t
 #define INPUTSOURCE__SDI_VANC_DISCOVERY_DISPLAY (1 <<  0)
 #define INPUTSOURCE__SDI_VANC_DISCOVERY_SCTE104 (1 <<  1)
 #define MUX__DQ_HEXDUMP                         (1 <<  4)
+#define MUX__PTS_REPORT_TIMES                   (1 <<  5)
+#define MUX__REPORT_Q                           (1 <<  6)
     uint32_t verbose_bitmask;
     int is_active;
     int obe_system;
@@ -463,7 +525,8 @@ struct obe_t
     /* Frame drop flags
      * TODO: make this work for multiple inputs and outputs */
     pthread_mutex_t drop_mutex;
-    int encoder_drop;
+    int video_encoder_drop;
+    int audio_encoder_drop;
     int mux_drop;
 
     /* Streams */
@@ -523,6 +586,11 @@ typedef struct
 extern const obe_smoothing_func_t enc_smoothing;
 extern const obe_smoothing_func_t mux_smoothing;
 
+int obe_timeval_subtract(struct timeval *result, struct timeval *x, struct timeval *y);
+int64_t obe_timediff_to_msecs(struct timeval *tv);
+int64_t obe_timediff_to_usecs(struct timeval *tv);
+
+const char *obe_ascii_datetime();
 int64_t obe_mdate( void );
 
 obe_device_t *new_device( void );
@@ -542,6 +610,7 @@ void add_device( obe_t *h, obe_device_t *device );
 
 int add_to_queue( obe_queue_t *queue, void *item );
 int remove_from_queue( obe_queue_t *queue );
+int remove_from_queue_without_lock(obe_queue_t *queue);
 int remove_item_from_queue( obe_queue_t *queue, void *item );
 
 int add_to_filter_queue( obe_t *h, obe_raw_frame_t *raw_frame );

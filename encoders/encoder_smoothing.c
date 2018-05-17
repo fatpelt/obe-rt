@@ -23,7 +23,7 @@
 
 #include "common/common.h"
 
-static void *start_smoothing( void *ptr )
+static void *encoder_start_smoothing( void *ptr )
 {
     obe_t *h = ptr;
     int num_enc_smoothing_frames = 0, buffer_frames = 0;
@@ -134,4 +134,4 @@ static void *start_smoothing( void *ptr )
     return NULL;
 }
 
-const obe_smoothing_func_t enc_smoothing = { start_smoothing };
+const obe_smoothing_func_t enc_smoothing = { encoder_start_smoothing };

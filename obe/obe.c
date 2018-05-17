@@ -35,11 +35,57 @@
 extern int pthread_setname_np(pthread_t thread, const char *name);
 
 /** Utilities **/
+
+const char *obe_ascii_datetime()
+{
+	char *s = calloc(1, 64);
+	time_t now;
+	time(&now);
+	sprintf(s, "%s", ctime(&now));
+	s[ strlen(s) - 1 ] = 0;
+ 
+	return (const char *)s;
+}
+
 int64_t obe_mdate( void )
 {
     struct timespec ts_current;
     clock_gettime( CLOCK_MONOTONIC, &ts_current );
     return (int64_t)ts_current.tv_sec * 1000000 + (int64_t)ts_current.tv_nsec / 1000;
+}
+
+int obe_timeval_subtract(struct timeval *result, struct timeval *x, struct timeval *y)
+{
+     /* Perform the carry for the later subtraction by updating y. */
+     if (x->tv_usec < y->tv_usec)
+     {
+         int nsec = (y->tv_usec - x->tv_usec) / 1000000 + 1;
+         y->tv_usec -= 1000000 * nsec;
+         y->tv_sec += nsec;
+     }
+     if (x->tv_usec - y->tv_usec > 1000000)
+     {
+         int nsec = (x->tv_usec - y->tv_usec) / 1000000;
+         y->tv_usec += 1000000 * nsec;
+         y->tv_sec -= nsec;
+     }
+
+     /* Compute the time remaining to wait. tv_usec is certainly positive. */
+     result->tv_sec = x->tv_sec - y->tv_sec;
+     result->tv_usec = x->tv_usec - y->tv_usec;
+
+     /* Return 1 if result is negative. */
+     return x->tv_sec < y->tv_sec;
+}
+
+int64_t obe_timediff_to_msecs(struct timeval *tv)
+{
+        return (tv->tv_sec * 1000) + (tv->tv_usec / 1000);
+}
+
+int64_t obe_timediff_to_usecs(struct timeval *tv)
+{
+        return (tv->tv_sec * 1000000) + tv->tv_usec;
 }
 
 /** Create/Destroy **/
@@ -166,11 +212,12 @@ void add_device( obe_t *h, obe_device_t *device )
 }
 
 /** Add/Remove from queues */
-void obe_init_queue( obe_queue_t *queue )
+void obe_init_queue(obe_queue_t *queue, char *name)
 {
     pthread_mutex_init( &queue->mutex, NULL );
     pthread_cond_init( &queue->in_cv, NULL );
     pthread_cond_init( &queue->out_cv, NULL );
+    strcpy(&queue->name[0], name);
 }
 
 void obe_destroy_queue( obe_queue_t *queue )
@@ -199,6 +246,23 @@ int add_to_queue( obe_queue_t *queue, void *item )
 
     pthread_cond_signal( &queue->in_cv );
     pthread_mutex_unlock( &queue->mutex );
+
+    return 0;
+}
+
+int remove_from_queue_without_lock(obe_queue_t *queue)
+{
+    void **tmp;
+
+    if (queue->size > 1)
+        memmove(&queue->queue[0], &queue->queue[1], sizeof(*queue->queue) * (queue->size-1));
+    tmp = realloc(queue->queue, sizeof(*queue->queue) * (queue->size-1));
+    queue->size--;
+    if (!tmp && queue->size) {
+        syslog(LOG_ERR, "Malloc failed\n");
+        return -1;
+    }
+    queue->queue = tmp;
 
     return 0;
 }
@@ -381,7 +445,7 @@ int remove_early_frames( obe_t *h, int64_t pts )
     for( int i = 0; i < h->mux_queue.size; i++ )
     {
         obe_coded_frame_t *frame = h->mux_queue.queue[i];
-        if( !frame->is_video && frame->pts < pts )
+        if (frame->type != CF_VIDEO && frame->pts < pts)
         {
             destroy_coded_frame( frame );
             memmove( &h->mux_queue.queue[i], &h->mux_queue.queue[i+1], sizeof(*h->mux_queue.queue) * (h->mux_queue.size-1-i) );
@@ -994,9 +1058,9 @@ int obe_start( obe_t *h )
     /* Setup mutexes and cond vars */
     pthread_mutex_init( &h->devices[0]->device_mutex, NULL );
     pthread_mutex_init( &h->drop_mutex, NULL );
-    obe_init_queue( &h->enc_smoothing_queue );
-    obe_init_queue( &h->mux_queue );
-    obe_init_queue( &h->mux_smoothing_queue );
+    obe_init_queue( &h->enc_smoothing_queue, "encoder smoothing" );
+    obe_init_queue( &h->mux_queue, "mux" );
+    obe_init_queue( &h->mux_smoothing_queue, "mux smoothing" );
     pthread_mutex_init( &h->obe_clock_mutex, NULL );
     pthread_cond_init( &h->obe_clock_cv, NULL );
 
@@ -1023,7 +1087,9 @@ int obe_start( obe_t *h )
     /* Open Output Threads */
     for( int i = 0; i < h->num_outputs; i++ )
     {
-        obe_init_queue( &h->outputs[i]->queue );
+        char n[64];
+        sprintf(n, "outputs #%d", i);
+        obe_init_queue( &h->outputs[i]->queue, n );
         output = ip_output;
 
         if( pthread_create( &h->outputs[i]->output_thread, NULL, output.open_output, (void*)h->outputs[i] ) < 0 )
@@ -1045,7 +1111,9 @@ int obe_start( obe_t *h )
                 fprintf( stderr, "Malloc failed \n" );
                 goto fail;
             }
-            obe_init_queue( &h->encoders[h->num_encoders]->queue );
+            char n[64];
+            sprintf(n, "output stream #%d", i);
+            obe_init_queue( &h->encoders[h->num_encoders]->queue, n);
             h->encoders[h->num_encoders]->output_stream_id = h->output_streams[i].output_stream_id;
 
             if( h->output_streams[i].stream_format == VIDEO_AVC )
@@ -1197,7 +1265,16 @@ int obe_start( obe_t *h )
             if( !h->filters[h->num_filters] )
                 goto fail;
 
-            obe_init_queue( &h->filters[h->num_filters]->queue );
+            char n[64];
+            if (input_stream->stream_type == STREAM_TYPE_VIDEO)
+                sprintf(n, "input stream #%d [VIDEO]", i);
+            else
+            if (input_stream->stream_type == STREAM_TYPE_AUDIO)
+                sprintf(n, "input stream #%d [AUDIO]", i);
+            else
+                sprintf(n, "input stream #%d [OTHER]", i);
+
+            obe_init_queue( &h->filters[h->num_filters]->queue, n );
 
             h->filters[h->num_filters]->num_stream_ids = 1;
             h->filters[h->num_filters]->stream_id_list = malloc( sizeof(*h->filters[h->num_filters]->stream_id_list) );
