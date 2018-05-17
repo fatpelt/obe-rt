@@ -126,6 +126,10 @@ enum stream_type_e
     STREAM_TYPE_MISC,
 };
 
+/* Don't add anything new to this unless it goes ad the end,
+ * else various internal lists and structs will break their
+ * hard index values.
+ */
 enum stream_formats_e
 {
     /* Separate Streams */
