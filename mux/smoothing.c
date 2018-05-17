@@ -151,7 +151,6 @@ printf("removing item %d of %d\n", i, num_muxed_data);
             }
             else
             {
-printf("Not yet complete.\n");
                 pthread_mutex_unlock( &h->mux_smoothing_queue.mutex );
                 continue;
             }
