@@ -18,6 +18,7 @@ LDFLAGS += -lpthread -lz -lx264 -lyuv
 LDFLAGS += -lavformat -lavcodec -lavresample -ldl -lasound -lfdk-aac -lbz2 -lz -lswscale -lavutil -lm
 LDFLAGS += -lklscte35 -lklvanc
 LDFLAGS += -ltwolame -lmpegts -lstdc++ -ldl -lzvbi -lreadline
+LDFLAGS += -lx265
 
 CXXFLAGS = $(CFLAGS)
 
@@ -52,6 +53,7 @@ obecli_SOURCES += ../encoders/audio/mp2/twolame.c
 obecli_SOURCES += ../encoders/audio/ac3bitstream/ac3bitstream.c
 obecli_SOURCES += ../encoders/audio/ac3bitstream/klringbuffer.c
 obecli_SOURCES += ../encoders/video/avc/x264.c
+obecli_SOURCES += ../encoders/video/hevc/x265.c
 obecli_SOURCES += ../common/network/udp/udp.c
 obecli_SOURCES += ../common/linsys/util.c
 obecli_SOURCES += ../common/x86/x86inc.asm

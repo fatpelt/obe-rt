@@ -34,6 +34,7 @@
 
 #include <readline/readline.h>
 #include <readline/history.h>
+#include <libavresample/avresample.h>
 
 #include "obe.h"
 #include "obecli.h"
@@ -112,6 +113,7 @@ static const char * stream_opts[] = { "action", "format",
                                       "preset-name", /* 41 */
                                       "entropy", /* 42 */
                                       "audio-offset", /* 43 */
+                                      "video-codec", /* 44 */
                                       NULL };
 
 static const char * muxer_opts[]  = { "ts-type", "cbr", "ts-muxrate", "passthrough", "ts-id", "program-num", "pmt-pid", "pcr-pid",
@@ -681,6 +683,20 @@ static int set_stream( char *command, obecli_command_t *child )
             const char *preset_name  = obe_get_option( stream_opts[41], opts );
             const char *entropy_mode = obe_get_option( stream_opts[42], opts );
             const char *audio_offset = obe_get_option( stream_opts[43], opts );
+            const char *video_codec = obe_get_option( stream_opts[44], opts );
+
+            int video_codec_id = 0; /* AVC */
+            if (video_codec) {
+                if (strcasecmp(video_codec, "AVC") == 0)
+                    video_codec_id = 0; /* AVC */
+                else
+                if (strcasecmp(video_codec, "HEVC") == 0)
+                    video_codec_id = 1; /* HEVC */
+                else {
+                    fprintf(stderr, "video codec selection is invalid\n" );
+                    return -1;
+                }
+            }
 
             if( input_stream->stream_type == STREAM_TYPE_VIDEO )
             {
@@ -748,7 +764,14 @@ static int set_stream( char *command, obecli_command_t *child )
 
                 /* Set it to encode by default */
                 cli.output_streams[output_stream_id].stream_action = STREAM_ENCODE;
-                cli.output_streams[output_stream_id].stream_format = VIDEO_AVC;
+
+                if (video_codec_id == 0) {
+                    cli.output_streams[output_stream_id].stream_format = VIDEO_AVC;
+                } else
+                if (video_codec_id == 1) {
+                    cli.output_streams[output_stream_id].stream_format = VIDEO_HEVC;
+                }
+
                 avc_param->rc.i_vbv_max_bitrate = obe_otoi( vbv_maxrate, 0 );
                 avc_param->rc.i_vbv_buffer_size = obe_otoi( vbv_bufsize, 0 );
                 avc_param->rc.i_bitrate         = obe_otoi( bitrate, 0 );
@@ -1513,9 +1536,14 @@ static int show_output_streams( char *command, obecli_command_t *child )
             printf( "DVB-Teletext\n" );
         else if( output_stream->stream_format == VBI_RAW )
             printf( "DVB-VBI\n" );
-        else if( input_stream->stream_type == STREAM_TYPE_VIDEO )
+        else if (input_stream->stream_type == STREAM_TYPE_VIDEO)
         {
-            printf( "Video: AVC \n" );
+            if (output_stream->stream_format == VIDEO_AVC)
+                printf( "Video: AVC\n" );
+            else if (output_stream->stream_format == VIDEO_HEVC)
+                printf( "Video: HEVC\n" );
+            else 
+                printf( "Video: AVC OR HEVC\n");
         }
         else if( input_stream->stream_type == STREAM_TYPE_AUDIO )
         {
@@ -1574,7 +1602,11 @@ static int start_encode( char *command, obecli_command_t *child )
                 cli.output_streams[i].avc_param.rc.i_vbv_max_bitrate = cli.output_streams[i].avc_param.rc.i_bitrate;
 
             cli.output_streams[i].stream_action = STREAM_ENCODE;
+#if 0
             cli.output_streams[i].stream_format = VIDEO_AVC;
+// TODO
+            cli.output_streams[i].stream_format = ;
+#endif
             if( cli.avc_profile >= 0 )
                 x264_param_apply_profile( &cli.output_streams[i].avc_param, x264_profile_names[cli.avc_profile] );
         }

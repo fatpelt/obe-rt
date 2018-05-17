@@ -279,6 +279,7 @@
 #include "common/common.h"
 #include "mux/mux.h"
 #include <libmpegts.h>
+#include <libavresample/avresample.h>
 
 #define MIN_PID 0x30
 #define MAX_PID 0x1fff
@@ -287,6 +288,7 @@ static const int mpegts_stream_info[][3] =
 {
     { VIDEO_AVC,   LIBMPEGTS_VIDEO_AVC,      LIBMPEGTS_STREAM_ID_MPEGVIDEO },
     { VIDEO_MPEG2, LIBMPEGTS_VIDEO_MPEG2,    LIBMPEGTS_STREAM_ID_MPEGVIDEO },
+    { VIDEO_HEVC,  LIBMPEGTS_VIDEO_HEVC,     LIBMPEGTS_STREAM_ID_MPEGVIDEO },
     /* TODO 302M */
     { AUDIO_MP2,   LIBMPEGTS_AUDIO_MPEG2,    LIBMPEGTS_STREAM_ID_MPEGAUDIO },
     { AUDIO_AC_3,  LIBMPEGTS_AUDIO_AC3,      LIBMPEGTS_STREAM_ID_PRIVATE_1 },
@@ -467,7 +469,7 @@ void *open_muxer( void *ptr )
             stream->stream_identifier = output_stream->ts_opts.stream_identifier;
         }
 
-        if( stream_format == VIDEO_AVC )
+        if (stream_format == VIDEO_AVC || stream_format == VIDEO_HEVC)
         {
             encoder_wait( h, output_stream->output_stream_id );
 
@@ -524,6 +526,19 @@ void *open_muxer( void *ptr )
             stream_format = input_stream->stream_format;
 
         if( stream_format == VIDEO_AVC )
+        {
+            x264_param_t *p_param = encoder->encoder_params;
+            int j = 0;
+            while( avc_profiles[j][0] && p_param->i_profile != avc_profiles[j][0] )
+                j++;
+
+            if( ts_setup_mpegvideo_stream( w, stream->pid, p_param->i_level_idc, avc_profiles[j][1], 0, 0, 0 ) < 0 )
+            {
+                fprintf( stderr, "[ts] Could not setup video stream\n" );
+                goto end;
+            }
+        }
+        else if (stream_format == VIDEO_HEVC)
         {
             x264_param_t *p_param = encoder->encoder_params;
             int j = 0;
@@ -789,6 +804,16 @@ void *open_muxer( void *ptr )
 
         // TODO figure out last frame
         ts_write_frames( w, frames, num_frames, &output, &len, &pcr_list );
+#if 0
+//printf("bb = %d len = %d\n", bb, len);
+static FILE *fh = NULL;
+
+if (fh == NULL)
+  fh = fopen("/tmp/hevc.ts", "wb");
+
+if (fh)
+  fwrite(output, 1, len, fh);
+#endif
 
         if( len )
         {

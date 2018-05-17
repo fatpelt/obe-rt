@@ -188,6 +188,7 @@ static const obecli_format_name_t format_names[] =
 {
     { VIDEO_UNCOMPRESSED, "RAW", "Uncompressed Video",    "N/A",                       "N/A" },
     { VIDEO_AVC,    "AVC",       "Advanced Video Coding", "FFmpeg AVC decoder",        "x264 encoder" },
+    { VIDEO_HEVC,   "HEVC",      "High Efficiency Video Coding", "FFmpeg HEVC decoder","x265 encoder" },
     { VIDEO_MPEG2,  "MPEG-2",    "MPEG-2 Video",          "FFmpeg MPEG-2 decoder",     "N/A" },
     { AUDIO_PCM,    "PCM",       "PCM (raw audio)",       "N/A",                       "N/A" },
     { AUDIO_MP2,    "MP2",       "MPEG-1 Layer II Audio", "FFmpeg MP2 audio decoder",  "twolame encoder" },
