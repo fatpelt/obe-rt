@@ -1106,7 +1106,7 @@ int obe_start( obe_t *h )
                 memcpy( &vid_enc_params->avc_param, &h->output_streams[i].avc_param, sizeof(x264_param_t) );
                 if( pthread_create( &h->encoders[h->num_encoders]->encoder_thread, NULL, x264_encoder.start_encoder, (void*)vid_enc_params ) < 0 )
                 {
-                    fprintf( stderr, "Couldn't create encode thread \n" );
+                    fprintf( stderr, "Couldn't create x264 encode thread\n" );
                     goto fail;
                 }
                 pthread_setname_np(h->encoders[h->num_encoders]->encoder_thread, "obe-x264-encoder");
