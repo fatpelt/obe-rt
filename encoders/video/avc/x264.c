@@ -118,7 +118,7 @@ printf("pic->img.i_csp = %d [%s] bits = %d\n",
     return 0;
 }
 
-static void *start_encoder( void *ptr )
+static void *x264_start_encoder( void *ptr )
 {
     obe_vid_enc_params_t *enc_params = ptr;
     obe_t *h = enc_params->h;
@@ -456,4 +456,4 @@ end:
     return NULL;
 }
 
-const obe_vid_enc_func_t x264_encoder = { start_encoder };
+const obe_vid_enc_func_t x264_obe_encoder = { x264_start_encoder };

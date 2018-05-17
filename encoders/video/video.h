@@ -36,6 +36,6 @@ typedef struct
     x264_param_t avc_param;
 } obe_vid_enc_params_t;
 
-extern const obe_vid_enc_func_t x264_encoder;
+extern const obe_vid_enc_func_t x264_obe_encoder;
 
 #endif
