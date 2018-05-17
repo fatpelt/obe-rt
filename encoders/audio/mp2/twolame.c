@@ -33,36 +33,18 @@
 
 #define LOCAL_DEBUG 0
 
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-#include <libklmonitoring/klmonitoring.h>
-#endif
-
 static void *start_encoder_mp2( void *ptr )
 {
 #if LOCAL_DEBUG
     printf("%s()\n", __func__);
 #endif
 
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-    struct kl_histogram audio_encode;
-    int histogram_dump = 0;
-    kl_histogram_reset(&audio_encode, "audio frame encode", KL_BUCKET_VIDEO);
-#endif
     obe_aud_enc_params_t *enc_params = ptr;
     obe_t *h = enc_params->h;
     obe_encoder_t *encoder = enc_params->encoder;
     obe_output_stream_t *stream = enc_params->stream;
     obe_raw_frame_t *raw_frame;
     obe_coded_frame_t *coded_frame;
-
-    /* We're not using any windowing/monitoring capability, but
-     * lets stay safe and ensure these are initialized.
-     */
-    enc_params->cb_window_begin.tv_sec = 0;
-    enc_params->cb_window_begin.tv_usec = 0;
-    enc_params->cb_window_count = 0;
-    enc_params->cb_window_lost_signal = 0;
-
 
 #if LOCAL_DEBUG
     printf("%s() output_stream_id = %d\n", __func__, encoder->output_stream_id);
@@ -189,19 +171,7 @@ static void *start_encoder_mp2( void *ptr )
 
         avresample_read( avr, (uint8_t**)&audio_buf, avresample_available( avr ) );
 
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-        kl_histogram_sample_begin(&audio_encode);
-#endif
         output_size = twolame_encode_buffer_float32_interleaved( tl_opts, audio_buf, raw_frame->audio_frame.num_samples, output_buf, MP2_AUDIO_BUFFER_SIZE );
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-        kl_histogram_sample_complete(&audio_encode);
-        if (histogram_dump++ > 240) {
-                histogram_dump = 0;
-#if PRINT_HISTOGRAMS
-                kl_histogram_printf(&audio_encode);
-#endif
-        }
-#endif
 
         if( output_size < 0 )
         {
@@ -249,6 +219,7 @@ static void *start_encoder_mp2( void *ptr )
             rounded_pts /= OBE_CLOCK;
             rounded_pts *= 2592000;
             coded_frame->pts = rounded_pts;
+            coded_frame->pts += get_param_audio_offset_ticks(h);
 
             coded_frame->random_access = 1; /* Every frame output is a random access point */
             coded_frame->type = CF_AUDIO;

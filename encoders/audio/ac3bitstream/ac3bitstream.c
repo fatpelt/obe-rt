@@ -28,17 +28,7 @@
 #include "encoders/audio/audio.h"
 #include "hexdump.h"
 
-#define USE_DETECTOR2 1
-
-#if USE_DETECTOR2
 #include "input/sdi/smpte337_detector2.h"
-#else
-#include "input/sdi/smpte337_detector.h"
-#endif
-
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-#include <libklmonitoring/klmonitoring.h>
-#endif
 
 #define LOCAL_DEBUG 0
 #if LOCAL_DEBUG
@@ -47,8 +37,6 @@
 
 int64_t cur_pts = -1;
 int64_t ac3_offset_ms = 0;
-
-static struct avfm_s g_avfm;
 
 /* Polynomial table for AC3/A52 checksums 16+15+1+1 */
 static const uint16_t crc_tab[] =
@@ -141,79 +129,18 @@ static int validateCRC(uint8_t *buf, uint32_t buflen)
 	return ret;
 }
 
-#if USE_DETECTOR2
 static void * detector_callback(void *user_context,
         struct smpte337_detector2_s *ctx,
         uint8_t datamode, uint8_t datatype, uint32_t payload_bitCount, uint8_t *payload, struct avfm_s *avfm)
-#else
-/* We're going to be handed a SMPTE337 bitstream, including the header.
- * It might be AC3, or it could very well be something else, check it.
- * Assuming its AC3, repackage and forward it to the muxer.
- */
-static void * detector_callback(void *user_context,
-        struct smpte337_detector_s *ctx,
-        uint8_t datamode, uint8_t datatype, uint32_t payload_bitCount, uint8_t *payload)
-#endif
 {
 	obe_aud_enc_params_t *enc_params = user_context;
 	obe_t *h = enc_params->h;
 	obe_encoder_t *encoder = enc_params->encoder;
 	uint32_t payload_byteCount = payload_bitCount / 8;
 
-#if 0
-	printf("AC3 callback.... avfm timing between audio frames is %d\n", abs(avfm->audio_pts - g_avfm.audio_pts));
-	avfm_dump(avfm);
-#endif
-
-	memcpy(&g_avfm, avfm, sizeof(*avfm));
-
 	/* Keep track of any lost signal condition inside our AC3 monitoring window. */
 	if (h->audio_encoder_drop) {
 		h->audio_encoder_drop = 0;
-		enc_params->cb_window_lost_signal = 1;
-	}
-
-	/* Detect and measure AC3 packet loss by using a 4000ms 125 ac3-frame monitoring
-	 * window. If it takes longr than 4000ms to collect 125 AC3 frames then we've
-	 * lost data. In which case, compute the loss and send this information downstream
-	 * to the mux by way of the discontinuity_hz field.
-	 * If we detect a loss due to signal loss, ignore the discontinuity, the mux
-	 * already deals with that correction.
-	 */
-	int64_t discontinuity_hz = 0;
-	enc_params->cb_window_count++;
-	if (enc_params->cb_window_count == 1) {
-		gettimeofday(&enc_params->cb_window_begin, NULL);
-	} else
-	if (enc_params->cb_window_count > 125 /* 4 seconds of ac3 */) {
-
-		struct timeval now, diff;
-		gettimeofday(&now, NULL);
-
-		obe_timeval_subtract(&diff, &now, &enc_params->cb_window_begin);
-		int64_t us = obe_timediff_to_usecs(&diff);
-
-		/* Reduce AC3 monitoring window from 4064ms (125 + 2 frames) to 4012ms (125.5 frames.).
-		 * This improves occasional lost single frames that are not being detected.
-		 */
-#if 0
-		time_t rn = time(0);
-		printf("ac3 window expired: %s", ctime(&rn));
-		extern void display_variables();
-		display_variables();
-		printf("ac3 window us %" PRIi64 " >= 4012000? %s\n", us, us >= 4012000 ? "YES" : "NO");
-#endif
-
-		if ((enc_params->cb_window_lost_signal == 0) && us >= 4012000) {
-			discontinuity_hz = (us - 4000000) * 27; /* We need this in a 27MHz clock. */
-
-			const char *ts = obe_ascii_datetime();
-			//printf("%s() %s -- us = %" PRIi64 " a/disc = %" PRIi64 "\n", __func__, ts, us, discontinuity_hz);
-			free((void *)ts);
-		}
-		
-		enc_params->cb_window_count = 0;
-		enc_params->cb_window_lost_signal = 0;
 	}
 
 #if LOCAL_DEBUG
@@ -232,17 +159,6 @@ static void * detector_callback(void *user_context,
                 payload_bitCount,
                 payload);
 #endif
-
-	/* Increment by 2880 90KHz clock ticks, expressed in 27MHz (SCR rate).
-  	 * Or, 32ms of audio, in each packet, matching all of the other broadcaster
-  	 * streams. We need to do this regardless if whether the incoming AC3BITSTREAM
-  	 * frame is good or bad. If the frame fails to validate, we end up warping
-  	 * time too far from the PCR for downstream decoders. Warping time
-  	 * results in downstream decoders no longer playing audio after a "period"
-  	 * of time, for example when the warp becomes more than 10 seconds.
-  	 */
-#define PTS_TICKS_TO_27MHZ(n)  ((n) * 300)
- 	cur_pts += PTS_TICKS_TO_27MHZ(2880);
 
         if (datatype != 1 /* AC3 */) {
                 fprintf(stderr, "[AC3] Detected SMPTE337 datamode %d, we don't support it.", datamode);
@@ -276,17 +192,12 @@ static void * detector_callback(void *user_context,
 		return 0;
 	}
 
-#if 0
-	printf("[AC3] abs(cur_pts - avfm.audio_pts) = %12d (ms), abs(cur_pts - avfm.video_pts) = %12d (ms)\n",
-		(cur_pts - avfm->audio_pts) / 27000,
-		(cur_pts - avfm->video_pts) / 27000);
-#endif
-
 	cur_pts = avfm->audio_pts_corrected;
 	cf->pts = cur_pts + (ac3_offset_ms * 27000);
+	cf->pts += get_param_audio_offset_ticks(h);
+
 	cf->type = CF_AUDIO;
 	cf->random_access = 1; /* Every frame output is a random access point */
-	//cf->discontinuity_hz = discontinuity_hz;
 	memcpy(cf->data, payload, payload_byteCount);
 	memcpy(&cf->avfm, avfm, sizeof(*avfm));
 	cf->len = payload_byteCount;
@@ -303,24 +214,10 @@ static void *start_encoder_ac3bitstream(void *ptr)
 #endif
 
 	/* We need a bitstream SMPTE337 slicer to do our bidding.... */
-#if USE_DETECTOR2
         struct smpte337_detector2_s *smpte337_detector2 = smpte337_detector2_alloc((smpte337_detector2_callback)detector_callback, ptr);
-#else
-        struct smpte337_detector_s *smpte337_detector = smpte337_detector_alloc((smpte337_detector_callback)detector_callback, ptr);
-#endif
 
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-	struct kl_histogram audio_passthrough;
-	int histogram_dump = 0;
-	kl_histogram_reset(&audio_passthrough, "audio ac3 syncframe passthrough", KL_BUCKET_VIDEO);
-#endif
 	obe_aud_enc_params_t *enc_params = ptr;
 	obe_encoder_t *encoder = enc_params->encoder;
-
-	enc_params->cb_window_begin.tv_sec = 0;
-	enc_params->cb_window_begin.tv_usec = 0;
-	enc_params->cb_window_count = 0;
-	enc_params->cb_window_lost_signal = 0;
 
 #if LOCAL_DEBUG
 	printf("%s() output_stream_id = %d, ptr = %p\n", __func__, encoder->output_stream_id, ptr);
@@ -374,49 +271,22 @@ static void *start_encoder_ac3bitstream(void *ptr)
 		 */
 		int depth = 32; /* 32 bit samples, data in LSB 16 bits */
 
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-		kl_histogram_sample_begin(&audio_passthrough);
-#endif
-
-#if USE_DETECTOR2
 		size_t l = smpte337_detector2_write(smpte337_detector2, (uint8_t *)frm->audio_frame.audio_data[0],
 			frm->audio_frame.num_samples,
 			depth,
 			channels,
 			channels * (depth / 8),
 			span, &frm->avfm);
-#else
-		size_t l = smpte337_detector_write(smpte337_detector, (uint8_t *)frm->audio_frame.audio_data[0],
-			frm->audio_frame.num_samples,
-			depth,
-			channels,
-			channels * (depth / 8),
-			span);
-#endif
 		if (l <= 0) {
 			syslog(LOG_ERR, "[AC3] AC3Bitstream write() failed\n");
 		}
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-		kl_histogram_sample_complete(&audio_passthrough);
-		if (histogram_dump++ > 240) {
-			histogram_dump = 0;
-#if PRINT_HISTOGRAMS
-			kl_histogram_printf(&audio_passthrough);
-#endif
-		}
-#endif
 		frm->release_data(frm);
 		frm->release_frame(frm);
 		remove_from_queue(&encoder->queue);
 	}
 
-#if USE_DETECTOR2
 	if (smpte337_detector2)
 		smpte337_detector2_free(smpte337_detector2);
-#else
-	if (smpte337_detector)
-		smpte337_detector_free(smpte337_detector);
-#endif
 
 	free(enc_params);
 

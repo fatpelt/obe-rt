@@ -27,6 +27,7 @@
 #include <math.h>
 #include <assert.h>
 #include <getopt.h>
+#include <include/DeckLinkAPIVersion.h>
 
 #include <signal.h>
 #define _GNU_SOURCE
@@ -286,6 +287,20 @@ static char **obe_split_options( const char *opt_str, const char *options[] )
     }
     obe_free_string_array( split );
     return opts;
+}
+
+int64_t get_param_audio_offset_ms(obe_t *h)
+{
+    obe_output_stream_t *video_stream = get_output_stream(h, h->encoders[0]->output_stream_id);
+    if (!video_stream)
+        return 0;
+
+    return video_stream->audio_offset_ms;
+}
+
+int64_t get_param_audio_offset_ticks(obe_t *h)
+{
+    return get_param_audio_offset_ms(h) * 27000;
 }
 
 static char *obe_get_option( const char *name, char **split_options )
@@ -669,6 +684,11 @@ static int set_stream( char *command, obecli_command_t *child )
 
             if( input_stream->stream_type == STREAM_TYPE_VIDEO )
             {
+                if (audio_offset)
+                    cli.output_streams[output_stream_id].audio_offset_ms = atoi(audio_offset);
+                else
+                    cli.output_streams[output_stream_id].audio_offset_ms = 0;
+
                 x264_param_t *avc_param = &cli.output_streams[output_stream_id].avc_param;
 
                 FAIL_IF_ERROR(preset_name && (check_enum_value( preset_name, preset_names) < 0),
@@ -1033,7 +1053,7 @@ static int set_outputs( char *command, obecli_command_t *child )
     return 0;
 }
 
-
+#if DO_SET_VARIABLE
 /* Case 1 */
 extern int g_decklink_fake_lost_payload;
 extern time_t g_decklink_fake_lost_payload_time;
@@ -1050,8 +1070,6 @@ extern int64_t ac3_offset_ms;
 
 /* Mux */
 extern int64_t initial_audio_latency;
-extern int64_t audio_drift_correction;
-extern int64_t video_drift_correction;
 
 /* Mux Smoother */
 extern int64_t g_mux_smoother_last_item_count;
@@ -1075,12 +1093,6 @@ void display_variables()
         (cur_pts - cpb_removal_time) / 27000);
 
     printf("ts_mux.initial_audio_latency  = %" PRIi64 "\n", initial_audio_latency);
-    printf("ts_mux.video_drift_correction = %" PRIi64 "  %" PRIi64 "(ms)\n",
-        video_drift_correction,
-        video_drift_correction / 27000);
-    printf("ts_mux.audio_drift_correction = %" PRIi64 "  %" PRIi64 "(ms)\n",
-        audio_drift_correction,
-        audio_drift_correction / 27000);
     printf("mux_smoother.last_item_count  = %" PRIi64 "\n",
         g_mux_smoother_last_item_count);
     printf("mux_smoother.last_total_item_size  = %" PRIi64 " (bytes)\n",
@@ -1130,6 +1142,7 @@ static int set_variable(char *command, obecli_command_t *child)
 
     return 0;
 }
+#endif
 
 static void display_verbose()
 {
@@ -1773,8 +1786,9 @@ static void _usage(const char *prog, int exitcode)
 {
     printf("\nOpen Broadcast Encoder command line interface.\n");
     printf("Including Kernel Labs enhancements.\n");
-    printf("Version 1.7 (" GIT_VERSION ")\n");
+    printf("Version 1.8 (" GIT_VERSION ")\n");
     printf("x264 build#%d (%dbit support)\n", X264_BUILD, X264_BIT_DEPTH);
+    printf("Decklink SDK %s\n", BLACKMAGIC_DECKLINK_API_VERSION_STRING);
     printf("\n");
 
     if (exitcode) {

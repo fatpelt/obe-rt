@@ -50,7 +50,9 @@ static int set_muxer( char *command, obecli_command_t *child );
 static int set_output( char *command, obecli_command_t *child );
 static int set_outputs( char *command, obecli_command_t *child );
 static int set_verbose( char *command, obecli_command_t *child );
+#if DO_SET_VARIABLE
 static int set_variable( char *command, obecli_command_t *child );
+#endif
 
 static int show_bitdepth( char *command, obecli_command_t *child );
 static int show_decoders( char *command, obecli_command_t *child );
@@ -150,7 +152,10 @@ static obecli_command_t set_commands[] =
     { "output", "opts outputid:[opts]",   "Set output name or output opts", set_output, NULL },
     { "outputs", "[number]",              "Set output name or output opts", set_outputs, NULL },
     { "verbose", "[number]",              "Set verbosity level", set_verbose, NULL },
+#define DO_SET_VARIABLE 0
+#if DO_SET_VARIABLE
     { "variable", "[name = arg]",         "Set variable name = arg", set_variable, NULL },
+#endif
     { 0 }
 };
 

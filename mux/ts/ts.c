@@ -342,8 +342,6 @@ static void encoder_wait( obe_t *h, int output_stream_id )
 }
 
 int64_t initial_audio_latency = -1; /* ticks of 27MHz clock. Amount of audio (in time) we have buffered before the first video frame appeared. */
-int64_t audio_drift_correction = 0; /* ticks of 27MHz clock. As we detect drift we accumulate it here. We use thie to adjust audio clocks. */
-int64_t video_drift_correction = 0; /* ticks of 27MHz clock. As we detect drift we accumulate it here. We use thie to adjust video clocks. */
 
 void *open_muxer( void *ptr )
 {
@@ -374,22 +372,6 @@ void *open_muxer( void *ptr )
     struct sched_param param = {0};
     param.sched_priority = 99;
     pthread_setschedparam( pthread_self(), SCHED_RR, &param );
-
-    /* We're calculating loss between 'last' and 'current' audio/video PTS, we need
-     * to cache the last values for various clocks.
-     */
-#if 0
-    int64_t ltn_last_audio_pts = 0;
-    int64_t ltn_last_audio_dts = 0;
-    int64_t ltn_last_video_pts = 0;
-    int64_t ltn_last_video_dts = 0;
-#endif
-
-    /* Informational only for monitoring queues. We hold min/max values for various drifts.
-     * These are never used to adjust runtime behaviour.
-     */
-    int64_t v_min[3] = {  0xFFFFFFF,  0xFFFFFFF,  0xFFFFFFF };
-    int64_t v_max[3] = { -0xFFFFFFF, -0xFFFFFFF, -0xFFFFFFF };
 
     // TODO sanity check the options
 
@@ -739,64 +721,6 @@ void *open_muxer( void *ptr )
 
         //printf("\n START - queuelen %i \n", h->mux_queue.size);
 
-        /* Enumerate all queued frames, calculate first, last audio, video timings. */
-	/* Monitoring/debugging from the obecli interface in realtime using the set verbose (bits) command. */
-        int64_t dts_first = 0xFFFFFFFFFFF;
-        int64_t dts_last = 0;
-        int64_t audio_pts_first = 0xFFFFFFFFFFF;
-        int64_t audio_pts_last = 0;
-        int queued_vframes = 0;
-        int queued_aframes = 0;
-        for (int i = 0; i < h->mux_queue.size; i++) {
-            coded_frame = h->mux_queue.queue[i];
-            if (coded_frame->type == CF_VIDEO) {
-                queued_vframes++;
-                if (coded_frame->real_dts >= dts_last)
-                    dts_last = coded_frame->real_dts;
-                if (coded_frame->real_dts <= dts_first)
-                    dts_first = coded_frame->real_dts;
-            } else {
-                queued_aframes++;
-                if (coded_frame->pts >= audio_pts_last)
-                    audio_pts_last = coded_frame->pts;
-                if (coded_frame->pts <= audio_pts_first)
-                    audio_pts_first = coded_frame->pts;
-            }
-        }
-        if (h->verbose_bitmask & MUX__REPORT_Q) {
-            printf("vframes = %4d, first dts: %12" PRIi64 ", last dts: %12" PRIi64 "\n",
-                queued_vframes, dts_first / 300, dts_last / 300);
-        }
-        if (h->verbose_bitmask & MUX__REPORT_Q && queued_aframes) {
-                printf("aframes = %4d, first pts: %12" PRIi64 ", last pts: %12" PRIi64 " -- initial audio latency %" PRIi64 "(ms)\n",
-                    queued_aframes, audio_pts_first / 300, audio_pts_last / 300, initial_audio_latency / 27000);
-        } else
-        if (h->verbose_bitmask & MUX__REPORT_Q && !queued_aframes) {
-            printf("aframes = %4d, first pts:           NA, last pts:           NA -- audio queued NA\n", queued_aframes);
-        }
-
-        /* Calculate some min/max times between various audio and video clocks on the queue.
-         * Helpful when debugging drift issue, or issues where the queue slowly starts to lose
-         * frames due to upstream LOS.
-         */
-        if (queued_aframes) {
-            int64_t a = (audio_pts_first - dts_first) / 27000;
-            if (a < v_min[0]) v_min[0] = a;
-            if (a > v_max[0]) v_max[0] = a;
-            int64_t b = (audio_pts_last - dts_first) / 27000;
-            if (b < v_min[1]) v_min[1] = b;
-            if (b > v_max[1]) v_max[1] = b;
-            int64_t c = (audio_pts_last - audio_pts_first) / 27000;
-            if (c < v_min[2]) v_min[2] = c;
-            if (c > v_max[2]) v_max[2] = c;
-            if (h->verbose_bitmask & MUX__REPORT_Q) {
-                printf("first audio pts  -  first video dts = %8" PRIi64 "(ms)   %8" PRIi64 "..%8" PRIi64 "\n", a, v_min[0], v_max[0]);
-                printf(" last audio pts  -  first video dts = %8" PRIi64 "(ms)   %8" PRIi64 "..%8" PRIi64 "\n", b, v_min[1], v_max[1]);
-                printf(" last audio pts  -  first audio pts = %8" PRIi64 "(ms)   %8" PRIi64 "..%8" PRIi64 "\n", c, v_min[2], v_max[2]);
-            }
-        }
-	/* End: Monitoring/debugging */
-
 	/* Prpare the 'frames' array with any audio and video frames.
 	 * If we detect any video frames with discontinuities, adjust out video_drift_correction.
 	 */
@@ -804,41 +728,6 @@ void *open_muxer( void *ptr )
         for (int i = 0; i < h->mux_queue.size; i++)
         {
             coded_frame = h->mux_queue.queue[i];
-
-            if (coded_frame->type == CF_VIDEO) {
-
-                /* If the video frame has indicated unexpected loss of signal, bend all future received video frames. */
-                if (coded_frame->discontinuity_hz) {
-
-                    int64_t v = coded_frame->real_dts - coded_frame->pts;
-                    printf("[MUX] Video Adjustment: pts %12" PRIi64 " coded_pts %12" PRIi64 " diff: %12" PRIi64 " discontinuity of: %" PRIi64 "\n",
-                        coded_frame->pts, coded_frame->real_dts, v / 300, coded_frame->discontinuity_hz);
-
-                    video_drift_correction += coded_frame->discontinuity_hz;
-                    coded_frame->discontinuity_hz = 0;
-
-                    /* TODO: I've seen a double free twice. I think it's here but I can't be
-                     * certain. Need to repro lost video / aggressively repro.
-                     */
-                    remove_early_frames(h, coded_frame->real_dts - initial_audio_latency);
-                }    
-
-                coded_frame->cpb_initial_arrival_time += video_drift_correction;
-                coded_frame->cpb_final_arrival_time += video_drift_correction;
-                coded_frame->real_dts += video_drift_correction;
-                coded_frame->real_pts += video_drift_correction;
-            }
-
-            if (coded_frame->type == CF_AUDIO) {
-                /* If the video frame has indicated unexpected loss of signal, bend all future received video frames. */
-                if (coded_frame->discontinuity_hz) {
-                    const char *ts = obe_ascii_datetime();
-                    printf("[MUX] %s -- Audio adjust made of %" PRIi64 " ticks.\n", ts, coded_frame->discontinuity_hz);
-                    free((void *)ts);
-                    audio_drift_correction += coded_frame->discontinuity_hz;
-                    coded_frame->discontinuity_hz = 0;
-                }
-            }
 
             if (h->verbose_bitmask & MUX__DQ_HEXDUMP) {
                 printf("coded_frame: output_stream_id = %d, type = %d, len = %6d -- ",
@@ -881,8 +770,6 @@ void *open_muxer( void *ptr )
                     /* This has always applied equally to audio or 'other' non video frames. */
                     frames[num_frames].dts = coded_frame->pts - first_video_pts + first_video_real_pts;
                     frames[num_frames].pts = coded_frame->pts - first_video_pts + first_video_real_pts;
-                    frames[num_frames].pts += audio_drift_correction;
-                    frames[num_frames].dts += audio_drift_correction;
                 }
 
                 frames[num_frames].dts /= 300;
@@ -897,98 +784,6 @@ void *open_muxer( void *ptr )
                 /* This happens a lot with AC3 / bitstream frames in normal latency mode. */
             }
         }
-
-#if 0
-        /* Inspect the output array, check for any significant PTS drift. Recompute
-         * any new audio_drift_correction.
-         */
-        for (int z = 0; z < num_frames; z++) {
-
-            obe_coded_frame_t *cf = frames[z].opaque;
-
-            int64_t last_pts = ltn_last_audio_pts;
-            int64_t last_dts = ltn_last_audio_dts;
-            if (cf->type == CF_VIDEO) {
-                last_pts = ltn_last_video_pts;
-                last_dts = ltn_last_video_dts;
-            }
-
-            /* Helpful debug, disabled by default.. */
-            if ((h->verbose_bitmask & MUX__PTS_REPORT_TIMES) && cf->type == CF_VIDEO) {
-                struct timeval ts;
-                gettimeofday(&ts, NULL);
-                printf("%d.%6d -- %8d -- %4x dts: %12" PRIi64 " (diff: %8" PRIi64 ")\n",
-                    (int)ts.tv_sec,
-                    (int)ts.tv_usec,
-                    z,
-                    frames[z].pid,
-                    frames[z].dts,
-                    frames[z].dts - last_dts);
-            }
-
-            /* Check the delta between audio-pts and video-dts, if it exceeds by an unreasonable
-             * amount then adjust PTS timing accordingly.
-             * We need to handle normal/low-latency conditions and MP2 and AC3 buffering characteristics.
-             */
-            if (cf->type == CF_AUDIO) {
-                double d_diffms = (double)frames[z].pts - (double)ltn_last_video_dts;
-                d_diffms /= 90; /* Convert 90KHz clock to ms */
-
-                if (h->verbose_bitmask & MUX__PTS_REPORT_TIMES) {
-                    struct timeval ts;
-                    gettimeofday(&ts, NULL);
-                    printf("%d.%6d -- %8d -- %4x pts: %12" PRIi64 " (diff: %8" PRIi64 ") dts: %12" PRIi64 " vdtsdiff: "
-                        "%8.1f(ms)  vdts: %" PRIi64 " initial_audio_latency = %" PRIi64 "(ms)\n",
-                        (int)ts.tv_sec,
-                        (int)ts.tv_usec,
-                        z,
-                        frames[z].pid,
-                        frames[z].pts,
-                        frames[z].pts - last_pts,
-                        frames[z].dts,
-                        d_diffms,
-                        ltn_last_video_dts,
-                        initial_audio_latency / 27000);
-                }
-
-                if (d_diffms < -75) {
-                    int64_t t = abs(frames[z].pts - ltn_last_video_dts); /* 90KHz clock */
-                    t *= 300; /* Convert 90KHz to a 27MHz clock */
-                    if (h->obe_system == OBE_SYSTEM_TYPE_GENERIC) {
-                        t += initial_audio_latency; 
-                    }
-                    audio_drift_correction += t;
-
-                    if (h->verbose_bitmask & MUX__PTS_REPORT_TIMES) {
-                        if (h->obe_system == OBE_SYSTEM_TYPE_LOWEST_LATENCY || h->obe_system == OBE_SYSTEM_TYPE_LOW_LATENCY) {
-                            printf("Triggering a low-latency positive drift correction of %" PRIi64 "(ticks) (%" PRIi64 "ms)\n",
-                                audio_drift_correction,
-                                audio_drift_correction / 27000);
-                        } else
-                        if (h->obe_system == OBE_SYSTEM_TYPE_GENERIC) {
-                            printf("Triggering a norm-latency positive drift correction of %" PRIi64 "(ticks) (%" PRIi64 "ms) t = %" PRIi64 "\n",
-                                audio_drift_correction,
-                                audio_drift_correction / 27000,
-                                initial_audio_latency);
-                        }
-                    }
-
-                }
-
-                ltn_last_audio_pts = frames[z].pts;
-                ltn_last_audio_dts = frames[z].dts;
-
-            } /* if cf->type == CF_AUDIO */
-            else
-            if (cf->type == CF_VIDEO) {
-                ltn_last_video_pts = frames[z].pts;
-                ltn_last_video_dts = frames[z].dts;
-            } else {
-                /* We're not tracking/monitoring any other kinds of frames. */
-            }
-
-        } /* foreach frames[] obj */
-#endif
 
         pthread_mutex_unlock( &h->mux_queue.mutex );
 
