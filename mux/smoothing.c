@@ -109,7 +109,9 @@ static void *mux_start_smoothing( void *ptr )
         if( h->mux_drop )
         {
             syslog( LOG_INFO, "Mux smoothing buffer reset\n" );
+#if LOCAL_DEBUG
             printf("[Mux-Smoother] smoothing buffer reset\n" );
+#endif
             h->mux_drop = 0;
             av_fifo_reset( fifo_data );
             av_fifo_reset( fifo_pcr );
@@ -121,7 +123,9 @@ static void *mux_start_smoothing( void *ptr )
              * OOM kill event.
              */
             for (int i = 0; i < num_muxed_data; i++) {
-printf("removing item %d of %d\n", i, num_muxed_data);
+#if LOCAL_DEBUG
+                printf("removing item %d of %d\n", i, num_muxed_data);
+#endif
                 obe_muxed_data_t *md = h->mux_smoothing_queue.queue[0];
                 destroy_muxed_data(md);
                 remove_from_queue_without_lock(&h->mux_smoothing_queue);
@@ -194,8 +198,10 @@ printf("removing item %d of %d\n", i, num_muxed_data);
 
             int len = av_fifo_size( fifo_data ) + muxed_data[i]->len;
 
+#if LOCAL_DEBUG
             if (len > 4096000 || num_muxed_data > 80)
                 printf("i = %d, len %d\n", i, len);
+#endif
 
             if( av_fifo_realloc2( fifo_data, len ) < 0 )
             {
