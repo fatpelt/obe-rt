@@ -678,6 +678,7 @@ static int processAudio(decklink_ctx_t *decklink_ctx, decklink_opts_t *decklink_
                 avfm_init(&raw_frame->avfm, AVFM_AUDIO_PCM);
                 avfm_set_pts_video(&raw_frame->avfm, videoPTS);
                 avfm_set_pts_audio(&raw_frame->avfm, packet_time);
+                avfm_set_hw_received_time(&raw_frame->avfm);
 
                 raw_frame->release_data = obe_release_audio_data;
                 raw_frame->release_frame = obe_release_frame;
@@ -714,6 +715,7 @@ static int processAudio(decklink_ctx_t *decklink_ctx, decklink_opts_t *decklink_
                 avfm_init(&raw_frame->avfm, AVFM_AUDIO_A52);
                 avfm_set_pts_video(&raw_frame->avfm, videoPTS);
                 avfm_set_pts_audio(&raw_frame->avfm, packet_time);
+                avfm_set_hw_received_time(&raw_frame->avfm);
                 //avfm_dump(&raw_frame->avfm);
 
                 raw_frame->release_data = obe_release_audio_data;
@@ -1373,6 +1375,7 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
             avfm_init(&raw_frame->avfm, AVFM_VIDEO);
             avfm_set_pts_video(&raw_frame->avfm, decklink_ctx->stream_time);
             avfm_set_pts_audio(&raw_frame->avfm, packet_time);
+            avfm_set_hw_received_time(&raw_frame->avfm);
             //avfm_dump(&raw_frame->avfm);
 
 #if FRAME_CACHING

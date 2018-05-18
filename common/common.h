@@ -336,6 +336,7 @@ struct avfm_s {
     int64_t audio_pts; /* 27MHz */
     int64_t audio_pts_corrected; /* 27MHz */
     int64_t video_pts; /* 27MHz */
+    struct timeval hw_received_tv; /* Wall clock time the frame was received from the hardware. */
 };
 
 __inline__ void avfm_init(struct avfm_s *s, enum avfm_frame_type_e frame_type) {
@@ -343,6 +344,8 @@ __inline__ void avfm_init(struct avfm_s *s, enum avfm_frame_type_e frame_type) {
     s->audio_pts = -1;
     s->audio_pts_corrected = -1;
     s->video_pts = -1;
+    s->hw_received_tv.tv_sec = 0;
+    s->hw_received_tv.tv_usec = 0;
 };
 
 __inline__ void avfm_set_pts_video(struct avfm_s *s, int64_t pts) {
@@ -357,14 +360,28 @@ __inline__ void avfm_set_pts_audio_corrected(struct avfm_s *s, int64_t pts) {
     s->audio_pts_corrected = pts;
 }
 
+__inline__ void avfm_set_hw_received_time(struct avfm_s *s) {
+    gettimeofday(&s->hw_received_tv, NULL);
+}
+
+__inline__ unsigned int avfm_get_hw_received_tv_sec(struct avfm_s *s) {
+    return (unsigned int)s->hw_received_tv.tv_sec;
+}
+
+__inline__ unsigned int avfm_get_hw_received_tv_usec(struct avfm_s *s) {
+    return (unsigned int)s->hw_received_tv.tv_usec;
+}
+
 __inline__ void avfm_dump(struct avfm_s *s) {
-    printf("%s, a:%14" PRIi64 ", v:%14" PRIi64 ", ac:%14" PRIi64 ", diffabs:%" PRIi64 "\n",
+    printf("%s, a:%14" PRIi64 ", v:%14" PRIi64 ", ac:%14" PRIi64 ", diffabs:%" PRIi64 " -- hw_tv: %d.%d\n",
         s->frame_type == AVFM_AUDIO_A52 ? "A52" :
         s->frame_type == AVFM_AUDIO_PCM ? "PCM" :
         s->frame_type == AVFM_VIDEO     ? "  V" : "U",
         s->audio_pts, s->video_pts,
         s->audio_pts_corrected,
-        (int64_t)abs(s->audio_pts - s->video_pts));
+        (int64_t)abs(s->audio_pts - s->video_pts),
+        (unsigned int)s->hw_received_tv.tv_sec,
+        (unsigned int)s->hw_received_tv.tv_usec);
 }
 
 typedef struct
