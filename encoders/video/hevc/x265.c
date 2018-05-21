@@ -91,7 +91,7 @@ const char *sliceTypeLookup(uint32_t type)
 static int convert_obe_to_x265_pic(struct context_s *ctx, x265_picture *p, struct userdata_s *ud, obe_raw_frame_t *rf)
 {
 	obe_image_t *img = &rf->img;
-	//int count = 0;
+	int count = 0, idx = 0;
 
 	x265_picture_init(ctx->hevc_params, p);
 
@@ -111,7 +111,6 @@ static int convert_obe_to_x265_pic(struct context_s *ctx, x265_picture *p, struc
 	p->colorSpace |= X265_CSP_HIGH_DEPTH;
 #endif
 
-#if 0
 	for (int i = 0; i < rf->num_user_data; i++) {
 		/* Only give correctly formatted data to the encoder */
 		if (rf->user_data[i].type == USER_DATA_AVC_REGISTERED_ITU_T35 ||
@@ -120,22 +119,22 @@ static int convert_obe_to_x265_pic(struct context_s *ctx, x265_picture *p, struc
 		}
 	}
 
-	p->extra_sei.num_payloads = count;
-	int index = 0;
+	//printf(MESSAGE_PREFIX " raw_frame SEI %d..... pic SEI count %d\n", rf->num_user_data, count);
 
-	if (pic->extra_sei.num_payloads) {
-		p->extra_sei.sei_free = free;
-		p->extra_sei.payloads = malloc(p->extra_sei.num_payloads * sizeof(*p->extra_sei.payloads));
-		if (!pic->extra_sei.payloads)
+	p->userSEI.numPayloads = count;
+
+	if (p->userSEI.numPayloads) {
+		p->userSEI.payloads = malloc(p->userSEI.numPayloads * sizeof(*p->userSEI.payloads));
+		if (!p->userSEI.payloads)
 			return -1;
 
 		for (int i = 0; i < rf->num_user_data; i++) {
 			/* Only give correctly formatted data to the encoder */
 
 			if (rf->user_data[i].type == USER_DATA_AVC_REGISTERED_ITU_T35 || rf->user_data[i].type == USER_DATA_AVC_UNREGISTERED) {
-				p->extra_sei.payloads[idx].payload_type = rf->user_data[i].type;
-				p->extra_sei.payloads[idx].payload_size = rf->user_data[i].len;
-				p->extra_sei.payloads[idx].payload = rf->user_data[i].data;
+				p->userSEI.payloads[idx].payloadType = rf->user_data[i].type;
+				p->userSEI.payloads[idx].payloadSize = rf->user_data[i].len;
+				p->userSEI.payloads[idx].payload = rf->user_data[i].data;
 				idx++;
 			} else {
 				syslog(LOG_WARNING, MESSAGE_PREFIX " Invalid user data presented to encoder - type %i\n", rf->user_data[i].type);
@@ -150,7 +149,6 @@ static int convert_obe_to_x265_pic(struct context_s *ctx, x265_picture *p, struc
 			free(rf->user_data[i].data);
 		}
 	}
-#endif
 
 	return 0;
 }
