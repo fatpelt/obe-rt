@@ -24,6 +24,8 @@
 #ifndef OBE_ENCODERS_VIDEO_H
 #define OBE_ENCODERS_VIDEO_H
 
+#define SEI_TIMESTAMPING 1
+
 typedef struct
 {
     void* (*start_encoder)( void *ptr );

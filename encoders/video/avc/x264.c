@@ -25,8 +25,6 @@
 #include "encoders/video/video.h"
 #include <libavutil/mathematics.h>
 
-#define SEI_TIMESTAMPING 0
-
 #if SEI_TIMESTAMPING
 #define SEI_BIT_DELIMITER 0x81 /* Marker to prevent 21 consequtive zeros, its illegal. */
 static const unsigned char ltn_uuid_sei_timestamp[] =
