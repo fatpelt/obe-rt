@@ -31,14 +31,6 @@
 
 #define MESSAGE_PREFIX "[x265]:"
 
-#if SEI_TIMESTAMPING
-#define SEI_BIT_DELIMITER 0x81 /* Marker to prevent 21 consequtive zeros, its illegal. */
-static const unsigned char ltn_uuid_sei_timestamp[] =
-{
-    0x59, 0x96, 0xFF, 0x28, 0x17, 0xCA, 0x41, 0x96, 0x8D, 0xE3, 0xE5, 0x3F, 0xE2, 0xF9, 0x92, 0xAE
-};
-#endif
-
 struct context_s
 {
 	obe_vid_enc_params_t *enc_params;
@@ -163,67 +155,24 @@ static int convert_obe_to_x265_pic(struct context_s *ctx, x265_picture *p, struc
 
 #if SEI_TIMESTAMPING
 	x265_sei_payload *x;
-	int i;
 
 	/* Start time - Always the last SEI */
 	static uint32_t framecount = 0;
 	x = &p->userSEI.payloads[count - 1];
 	x->payloadType = USER_DATA_AVC_UNREGISTERED;
-	x->payloadSize = sizeof(ltn_uuid_sei_timestamp) + 32 + 10;
-	x->payload = calloc(1, x->payloadSize);
+	x->payloadSize = SEI_TIMESTAMP_PAYLOAD_LENGTH;
+	x->payload = set_timestamp_alloc();
 
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
-	/* Format of LTN_SEI_TAG_START_TIME record:
-	 * All records are big endian.
-	 * 4 byte header + 20 byte payload.
-	 * TT TT TT TT : 16 byte UUID
-	 * FC FC FC FC : incrementing frame counter.
-	 * HS HS HS HS : time received from hardware seconds (timeval.ts_sec).
-	 * HU HU HU HU : time received from hardware useconds (timeval.ts_usec).
-	 * SS SS SS SS : time send to compressor seconds (timeval.ts_sec).
-	 * SU SU SU SU : time send to compressor useconds (timeval.ts_usec).
-	 * ES ES ES ES : time exit from compressor seconds (timeval.ts_sec).
-	 * EU EU EU EU : time exit from compressor useconds (timeval.ts_usec).
-	 */
 
-	memcpy(x->payload, ltn_uuid_sei_timestamp, sizeof(ltn_uuid_sei_timestamp));
-	i = sizeof(ltn_uuid_sei_timestamp);
-
-	x->payload[i++] = (framecount >> 24) & 0xff;
-	x->payload[i++] = (framecount >> 16) & 0xff;
-	x->payload[i++] = SEI_BIT_DELIMITER;
-	x->payload[i++] = (framecount >>  8) & 0xff;
-	x->payload[i++] = (framecount >>  0) & 0xff;
-	x->payload[i++] = SEI_BIT_DELIMITER;
-
-	unsigned int sec = avfm_get_hw_received_tv_sec(&rf->avfm);
-	unsigned int usec = avfm_get_hw_received_tv_usec(&rf->avfm);
-	x->payload[i++] = (sec >> 24) & 0xff;
-	x->payload[i++] = (sec >> 16) & 0xff;
-	x->payload[i++] = SEI_BIT_DELIMITER;
-	x->payload[i++] = (sec >>  8) & 0xff;
-	x->payload[i++] = (sec >>  0) & 0xff;
-	x->payload[i++] = SEI_BIT_DELIMITER;
-	x->payload[i++] = (usec >> 24) & 0xff;
-	x->payload[i++] = (usec >> 16) & 0xff;
-	x->payload[i++] = SEI_BIT_DELIMITER;
-	x->payload[i++] = (usec >>  8) & 0xff;
-	x->payload[i++] = (usec >>  0) & 0xff;
-	x->payload[i++] = SEI_BIT_DELIMITER;
-
-	x->payload[i++] = (tv.tv_sec >> 24) & 0xff;
-	x->payload[i++] = (tv.tv_sec >> 16) & 0xff;
-	x->payload[i++] = SEI_BIT_DELIMITER;
-	x->payload[i++] = (tv.tv_sec >>  8) & 0xff;
-	x->payload[i++] = (tv.tv_sec >>  0) & 0xff;
-	x->payload[i++] = SEI_BIT_DELIMITER;
-	x->payload[i++] = (tv.tv_usec >> 24) & 0xff;
-	x->payload[i++] = (tv.tv_usec >> 16) & 0xff;
-	x->payload[i++] = SEI_BIT_DELIMITER;
-	x->payload[i++] = (tv.tv_usec >>  8) & 0xff;
-	x->payload[i++] = (tv.tv_usec >>  0) & 0xff;
-	x->payload[i++] = SEI_BIT_DELIMITER;
+	set_timestamp_field_set(x->payload, 1, framecount);
+	set_timestamp_field_set(x->payload, 2, avfm_get_hw_received_tv_sec(&rf->avfm));
+	set_timestamp_field_set(x->payload, 3, avfm_get_hw_received_tv_usec(&rf->avfm));
+	set_timestamp_field_set(x->payload, 4, tv.tv_sec);
+	set_timestamp_field_set(x->payload, 5, tv.tv_usec);
+	set_timestamp_field_set(x->payload, 6, 0);
+	set_timestamp_field_set(x->payload, 7, 0);
 
 	/* The remaining 8 bytes (time exit from compressor fields)
 	 * will be filled when the frame exists the compressor. */
@@ -455,22 +404,10 @@ static void *x265_start_encoder( void *ptr )
 				{
 					struct timeval tv;
 					gettimeofday(&tv, NULL);
-					unsigned char *p = ctx->hevc_nals[m].payload;
 
 					/* Add the time exit from compressor seconds/useconds. */
-					int i = 69;
-					p[i++] = (tv.tv_sec >> 24) & 0x0ff;
-					p[i++] = (tv.tv_sec >> 16) & 0x0ff;
-					p[i++] = SEI_BIT_DELIMITER;
-					p[i++] = (tv.tv_sec >>  8) & 0x0ff;
-					p[i++] = (tv.tv_sec >>  0) & 0x0ff;
-					p[i++] = SEI_BIT_DELIMITER;
-					p[i++] = (tv.tv_usec >> 24) & 0x0ff;
-					p[i++] = (tv.tv_usec >> 16) & 0x0ff;
-					p[i++] = SEI_BIT_DELIMITER;
-					p[i++] = (tv.tv_usec >>  8) & 0x0ff;
-					p[i++] = (tv.tv_usec >>  0) & 0x0ff;
-					p[i++] = SEI_BIT_DELIMITER;
+					set_timestamp_field_set(&ctx->hevc_nals[m].payload[23], 6, tv.tv_sec);
+					set_timestamp_field_set(&ctx->hevc_nals[m].payload[23], 7, tv.tv_usec);
 				}
 			}
 #endif

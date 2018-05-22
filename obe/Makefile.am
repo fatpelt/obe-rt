@@ -54,6 +54,7 @@ obecli_SOURCES += ../encoders/audio/ac3bitstream/ac3bitstream.c
 obecli_SOURCES += ../encoders/audio/ac3bitstream/klringbuffer.c
 obecli_SOURCES += ../encoders/video/avc/x264.c
 obecli_SOURCES += ../encoders/video/hevc/x265.c
+obecli_SOURCES += ../encoders/video/sei-timestamp.c
 obecli_SOURCES += ../common/network/udp/udp.c
 obecli_SOURCES += ../common/linsys/util.c
 obecli_SOURCES += ../common/x86/x86inc.asm

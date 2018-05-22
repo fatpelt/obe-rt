@@ -25,14 +25,6 @@
 #include "encoders/video/video.h"
 #include <libavutil/mathematics.h>
 
-#if SEI_TIMESTAMPING
-#define SEI_BIT_DELIMITER 0x81 /* Marker to prevent 21 consequtive zeros, its illegal. */
-static const unsigned char ltn_uuid_sei_timestamp[] =
-{
-    0x59, 0x96, 0xFF, 0x28, 0x17, 0xCA, 0x41, 0x96, 0x8D, 0xE3, 0xE5, 0x3F, 0xE2, 0xF9, 0x92, 0xAE
-};
-#endif
-
 int64_t cpb_removal_time = 0;
 
 static void x264_logger( void *p_unused, int i_level, const char *psz_fmt, va_list arg )
@@ -128,67 +120,24 @@ printf("pic->img.i_csp = %d [%s] bits = %d\n",
 
 #if SEI_TIMESTAMPING
     x264_sei_payload_t *p;
-    int i;
 
     /* Start time - Always the last SEI */
     static uint32_t framecount = 0;
     p = &pic->extra_sei.payloads[count - 1];
     p->payload_type = USER_DATA_AVC_UNREGISTERED;
-    p->payload_size = sizeof(ltn_uuid_sei_timestamp) + 32 + 10;
-    p->payload = calloc(1, p->payload_size);
+    p->payload_size = SEI_TIMESTAMP_PAYLOAD_LENGTH;
+    p->payload = set_timestamp_alloc();
 
     struct timeval tv;
     gettimeofday(&tv, NULL);
-    /* Format of LTN_SEI_TAG_START_TIME record:
-     * All records are big endian.
-     * 4 byte header + 20 byte payload.
-     * TT TT TT TT : 16 byte UUID
-     * FC FC FC FC : incrementing frame counter.
-     * HS HS HS HS : time received from hardware seconds (timeval.ts_sec).
-     * HU HU HU HU : time received from hardware useconds (timeval.ts_usec).
-     * SS SS SS SS : time send to compressor seconds (timeval.ts_sec).
-     * SU SU SU SU : time send to compressor useconds (timeval.ts_usec).
-     * ES ES ES ES : time exit from compressor seconds (timeval.ts_sec).
-     * EU EU EU EU : time exit from compressor useconds (timeval.ts_usec).
-     */
 
-    memcpy(p->payload, ltn_uuid_sei_timestamp, sizeof(ltn_uuid_sei_timestamp));
-    i = sizeof(ltn_uuid_sei_timestamp);
-
-    p->payload[i++] = (framecount >> 24) & 0xff;
-    p->payload[i++] = (framecount >> 16) & 0xff;
-    p->payload[i++] = SEI_BIT_DELIMITER;
-    p->payload[i++] = (framecount >>  8) & 0xff;
-    p->payload[i++] = (framecount >>  0) & 0xff;
-    p->payload[i++] = SEI_BIT_DELIMITER;
-
-    unsigned int sec = avfm_get_hw_received_tv_sec(&raw_frame->avfm);
-    unsigned int usec = avfm_get_hw_received_tv_usec(&raw_frame->avfm);
-    p->payload[i++] = (sec >> 24) & 0xff;
-    p->payload[i++] = (sec >> 16) & 0xff;
-    p->payload[i++] = SEI_BIT_DELIMITER;
-    p->payload[i++] = (sec >>  8) & 0xff;
-    p->payload[i++] = (sec >>  0) & 0xff;
-    p->payload[i++] = SEI_BIT_DELIMITER;
-    p->payload[i++] = (usec >> 24) & 0xff;
-    p->payload[i++] = (usec >> 16) & 0xff;
-    p->payload[i++] = SEI_BIT_DELIMITER;
-    p->payload[i++] = (usec >>  8) & 0xff;
-    p->payload[i++] = (usec >>  0) & 0xff;
-    p->payload[i++] = SEI_BIT_DELIMITER;
-
-    p->payload[i++] = (tv.tv_sec >> 24) & 0xff;
-    p->payload[i++] = (tv.tv_sec >> 16) & 0xff;
-    p->payload[i++] = SEI_BIT_DELIMITER;
-    p->payload[i++] = (tv.tv_sec >>  8) & 0xff;
-    p->payload[i++] = (tv.tv_sec >>  0) & 0xff;
-    p->payload[i++] = SEI_BIT_DELIMITER;
-    p->payload[i++] = (tv.tv_usec >> 24) & 0xff;
-    p->payload[i++] = (tv.tv_usec >> 16) & 0xff;
-    p->payload[i++] = SEI_BIT_DELIMITER;
-    p->payload[i++] = (tv.tv_usec >>  8) & 0xff;
-    p->payload[i++] = (tv.tv_usec >>  0) & 0xff;
-    p->payload[i++] = SEI_BIT_DELIMITER;
+    set_timestamp_field_set(p->payload, 1, framecount);
+    set_timestamp_field_set(p->payload, 2, avfm_get_hw_received_tv_sec(&raw_frame->avfm));
+    set_timestamp_field_set(p->payload, 3, avfm_get_hw_received_tv_usec(&raw_frame->avfm));
+    set_timestamp_field_set(p->payload, 4, tv.tv_sec);
+    set_timestamp_field_set(p->payload, 5, tv.tv_usec);
+    set_timestamp_field_set(p->payload, 6, 0);
+    set_timestamp_field_set(p->payload, 7, 0);
 
     /* The remaining 8 bytes (time exit from compressor fields)
      * will be filled when the frame exists the compressor. */
@@ -389,22 +338,10 @@ printf("Malloc failed\n");
 
                 struct timeval tv;
                 gettimeofday(&tv, NULL);
-                unsigned char *p = nal[m].p_payload;
 
                 /* Add the time exit from compressor seconds/useconds. */
-                int i = 52;
-                p[i++] = (tv.tv_sec >> 24) & 0x0ff;
-                p[i++] = (tv.tv_sec >> 16) & 0x0ff;
-                p[i++] = SEI_BIT_DELIMITER;
-                p[i++] = (tv.tv_sec >>  8) & 0x0ff;
-                p[i++] = (tv.tv_sec >>  0) & 0x0ff;
-                p[i++] = SEI_BIT_DELIMITER;
-                p[i++] = (tv.tv_usec >> 24) & 0x0ff;
-                p[i++] = (tv.tv_usec >> 16) & 0x0ff;
-                p[i++] = SEI_BIT_DELIMITER;
-                p[i++] = (tv.tv_usec >>  8) & 0x0ff;
-                p[i++] = (tv.tv_usec >>  0) & 0x0ff;
-                p[i++] = SEI_BIT_DELIMITER;
+                set_timestamp_field_set(&nal[m].p_payload[6], 6, tv.tv_sec);
+                set_timestamp_field_set(&nal[m].p_payload[6], 7, tv.tv_usec);
             }
         }
 #endif /* SEI_TIMESTAMPING */
