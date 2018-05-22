@@ -136,6 +136,7 @@ static void * detector_callback(void *user_context,
 	obe_aud_enc_params_t *enc_params = user_context;
 	obe_t *h = enc_params->h;
 	obe_encoder_t *encoder = enc_params->encoder;
+	obe_output_stream_t *output_stream = get_output_stream(h, encoder->output_stream_id);
 	uint32_t payload_byteCount = payload_bitCount / 8;
 
 	/* Keep track of any lost signal condition inside our AC3 monitoring window. */
@@ -194,7 +195,7 @@ static void * detector_callback(void *user_context,
 
 	cur_pts = avfm->audio_pts_corrected;
 	cf->pts = cur_pts + (ac3_offset_ms * 27000);
-	cf->pts += get_param_audio_offset_ticks(h);
+	cf->pts += ((int64_t)output_stream->audio_offset_ms * 27000);
 
 	cf->type = CF_AUDIO;
 	cf->random_access = 1; /* Every frame output is a random access point */

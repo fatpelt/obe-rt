@@ -626,7 +626,4 @@ void sleep_input_clock( obe_t *h, int64_t i_delay );
 
 int get_non_display_location( int type );
 
-int64_t get_param_audio_offset_ms(obe_t *h);
-int64_t get_param_audio_offset_ticks(obe_t *h);
-
 #endif
