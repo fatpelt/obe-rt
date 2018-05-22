@@ -219,7 +219,7 @@ static void *start_encoder_mp2( void *ptr )
             rounded_pts /= OBE_CLOCK;
             rounded_pts *= 2592000;
             coded_frame->pts = rounded_pts;
-            coded_frame->pts += get_param_audio_offset_ticks(h);
+            coded_frame->pts += ((int64_t)stream->audio_offset_ms * 27000);
 
             coded_frame->random_access = 1; /* Every frame output is a random access point */
             coded_frame->type = CF_AUDIO;
