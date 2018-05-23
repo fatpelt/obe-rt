@@ -755,7 +755,7 @@ static int set_stream( char *command, obecli_command_t *child )
                     cli.output_streams[output_stream_id].stream_format = VIDEO_AVC;
                 } else
                 if (video_codec_id == 1) {
-                    cli.output_streams[output_stream_id].stream_format = VIDEO_HEVC;
+                    cli.output_streams[output_stream_id].stream_format = VIDEO_HEVC_X265;
                 }
 
                 avc_param->rc.i_vbv_max_bitrate = obe_otoi( vbv_maxrate, 0 );
@@ -1526,7 +1526,7 @@ static int show_output_streams( char *command, obecli_command_t *child )
         {
             if (output_stream->stream_format == VIDEO_AVC)
                 printf( "Video: AVC\n" );
-            else if (output_stream->stream_format == VIDEO_HEVC)
+            else if (output_stream->stream_format == VIDEO_HEVC_X265)
                 printf( "Video: HEVC\n" );
             else 
                 printf( "Video: AVC OR HEVC\n");

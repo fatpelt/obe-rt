@@ -182,7 +182,7 @@ enum stream_formats_e
     /* Kernel Labs, a generic handler */
     DVB_TABLE_SECTION,
     SMPTE2038,
-    VIDEO_HEVC,
+    VIDEO_HEVC_X265,
 };
 
 enum mp2_mode_e

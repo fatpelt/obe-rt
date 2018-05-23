@@ -1143,7 +1143,7 @@ int obe_start( obe_t *h )
                 }
                 pthread_setname_np(h->encoders[h->num_encoders]->encoder_thread, "obe-x264-encoder");
             }
-            else if (h->output_streams[i].stream_format == VIDEO_HEVC)
+            else if (h->output_streams[i].stream_format == VIDEO_HEVC_X265)
             {
                 x264_param_t *x264_param = &h->output_streams[i].avc_param;
                 if( h->obe_system == OBE_SYSTEM_TYPE_LOWEST_LATENCY )
