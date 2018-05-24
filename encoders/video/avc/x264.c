@@ -338,16 +338,17 @@ printf("Malloc failed\n");
             coded_frame->real_pts = pic_out.hrd_timing.dpb_output_time;
 
             cpb_removal_time = pic_out.hrd_timing.cpb_removal_time;
+
+            avfm = pic_out.opaque;
+            memcpy(&coded_frame->avfm, avfm, sizeof(*avfm));
+            coded_frame->pts = avfm->audio_pts;
+
 #else
             coded_frame->cpb_initial_arrival_time = pic_out.hrd_timing.cpb_initial_arrival_time * 27000000.0;
             coded_frame->cpb_final_arrival_time = pic_out.hrd_timing.cpb_final_arrival_time * 27000000.0;
             coded_frame->real_dts = (pic_out.hrd_timing.cpb_removal_time * 27000000.0);
             coded_frame->real_pts = (pic_out.hrd_timing.dpb_output_time  * 27000000.0);
 #endif
-
-            avfm = pic_out.opaque;
-            memcpy(&coded_frame->avfm, avfm, sizeof(*avfm));
-            coded_frame->pts = coded_frame->avfm.audio_pts;
 
             /* The audio and video clocks jump with different intervals when the cable
              * is disconnected, suggestedint a BM firmware bug.
