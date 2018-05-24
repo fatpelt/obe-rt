@@ -306,7 +306,6 @@ static void run_detector(struct smpte337_detector2_s *ctx)
 				uint32_t payload_byteCount = payload_bitCount / 8;
 				
 				if (ctx->itemListTotalBytes >= (8 + payload_byteCount)) {
-					int processedCallback = 0;
 					unsigned char *payload = NULL;
 					size_t l = _list_read_alloc(ctx, &payload, 8 + payload_byteCount, &avfm, &readpos);
 					if (l != (8 + payload_byteCount)) {
@@ -333,14 +332,9 @@ static void run_detector(struct smpte337_detector2_s *ctx)
 //						oldpts = newpts;
 						handleCallback(ctx, (dat[5] >> 5) & 0x03, dat[5] & 0x1f,
 							payload_bitCount, (uint8_t *)payload + 8, &avfm);
-
-						processedCallback = 1;
 					}
 					if (payload)
 						free(payload);
-
-					if (processedCallback)
-						break;
 				} else {
 					/* Not enough data in the ring buffer, come back next time. */
 					break;
