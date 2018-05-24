@@ -384,8 +384,28 @@ printf("Malloc failed\n");
 
             coded_frame->real_dts = new_dts;
             coded_frame->real_pts = new_pts;
+#if 0
             coded_frame->cpb_initial_arrival_time = new_dts;
             coded_frame->cpb_final_arrival_time   = new_dts + abs(pic_out.hrd_timing.cpb_final_arrival_time - pic_out.hrd_timing.cpb_final_arrival_time);
+#else
+
+            static int64_t last_dts = 0;
+            static int64_t dts_diff_accum = 0;
+            int64_t dts_diff = 0;
+            if (last_dts > 0) {
+                dts_diff = coded_frame->real_dts - last_dts - (1 * frame_duration);
+                dts_diff_accum += dts_diff;
+            }
+            last_dts = coded_frame->real_dts;
+
+            int64_t ft = pic_out.hrd_timing.cpb_final_arrival_time;
+            int64_t it = pic_out.hrd_timing.cpb_initial_arrival_time;
+            int64_t fit = abs(ft - it);
+
+            coded_frame->cpb_initial_arrival_time += dts_diff_accum;
+
+            coded_frame->cpb_final_arrival_time = coded_frame->cpb_initial_arrival_time + fit;
+#endif
 
 #if DEBUG_CODEC_TIMING
             {
