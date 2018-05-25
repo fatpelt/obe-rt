@@ -1143,6 +1143,7 @@ int obe_start( obe_t *h )
                 }
                 pthread_setname_np(h->encoders[h->num_encoders]->encoder_thread, "obe-x264-encoder");
             }
+#if HAVE_X265_H
             else if (h->output_streams[i].stream_format == VIDEO_HEVC_X265)
             {
                 x264_param_t *x264_param = &h->output_streams[i].avc_param;
@@ -1170,6 +1171,7 @@ int obe_start( obe_t *h )
                 }
                 pthread_setname_np(h->encoders[h->num_encoders]->encoder_thread, "obe-x265-encoder");
             }
+#endif
             else if(h->output_streams[i].stream_format == AUDIO_AC_3_BITSTREAM) {
                 input_stream = get_input_stream(h, h->output_streams[i].input_stream_id);
                 h->output_streams[i].sdi_audio_pair = input_stream->sdi_audio_pair;

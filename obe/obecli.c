@@ -675,9 +675,11 @@ static int set_stream( char *command, obecli_command_t *child )
             if (video_codec) {
                 if (strcasecmp(video_codec, "AVC") == 0)
                     video_codec_id = 0; /* AVC */
+#if HAVE_X265_H
                 else
                 if (strcasecmp(video_codec, "HEVC") == 0)
                     video_codec_id = 1; /* HEVC */
+#endif
                 else {
                     fprintf(stderr, "video codec selection is invalid\n" );
                     return -1;
