@@ -25,6 +25,8 @@
 #include "encoders/video/video.h"
 #include <libavutil/mathematics.h>
 
+#define DEBUG_CODEC_TIMING 0
+
 int64_t cpb_removal_time = 0;
 
 static void x264_logger( void *p_unused, int i_level, const char *psz_fmt, va_list arg )
@@ -385,6 +387,29 @@ printf("Malloc failed\n");
             coded_frame->real_pts = pic_out.hrd_timing.dpb_output_time;
 
             cpb_removal_time = pic_out.hrd_timing.cpb_removal_time;
+
+            avfm = pic_out.opaque;
+            memcpy(&coded_frame->avfm, avfm, sizeof(*avfm));
+            coded_frame->pts = avfm->audio_pts;
+
+#if DEBUG_CODEC_TIMING
+            {
+                static int64_t last_real_pts = 0;
+                static int64_t last_real_dts = 0;
+
+                printf(" codec: real_pts %12" PRIi64 " ( %12" PRIi64 " )  real_dts %12" PRIi64 " ( %12" PRIi64 " )  iat %12" PRIi64 "  fat %12" PRIi64 "  audio_pts %10" PRIi64" \n",
+                    coded_frame->real_pts,
+                    coded_frame->real_pts - last_real_pts,
+                    coded_frame->real_dts,
+                    coded_frame->real_dts - last_real_dts,
+                    coded_frame->cpb_initial_arrival_time,
+                    coded_frame->cpb_final_arrival_time,
+                    coded_frame->pts);
+
+                last_real_pts = coded_frame->real_pts;
+                last_real_dts = coded_frame->real_dts;
+            }
+#endif
 #else
             coded_frame->cpb_initial_arrival_time = pic_out.hrd_timing.cpb_initial_arrival_time * 27000000.0;
             coded_frame->cpb_final_arrival_time = pic_out.hrd_timing.cpb_final_arrival_time * 27000000.0;
@@ -392,15 +417,11 @@ printf("Malloc failed\n");
             coded_frame->real_pts = (pic_out.hrd_timing.dpb_output_time  * 27000000.0);
 #endif
 
-            avfm = pic_out.opaque;
-            memcpy(&coded_frame->avfm, avfm, sizeof(*avfm));
-            coded_frame->pts = coded_frame->avfm.audio_pts;
-
             /* The audio and video clocks jump with different intervals when the cable
              * is disconnected, suggestedint a BM firmware bug.
              * We'll use the audio clock regardless, for both audio and video compressors.
              */
-            int64_t new_dts  = avfm->audio_pts + 24299700 - abs(coded_frame->real_dts - coded_frame->real_pts) + (2 * 450450);
+            int64_t new_dts  = avfm->audio_pts + 24299700 - abs(coded_frame->real_dts - coded_frame->real_pts) + (2 * frame_duration);
 
             /* We need to userstand, for this temporal frame, how much it varies from the dts. */
             int64_t pts_diff = coded_frame->real_dts - coded_frame->real_pts;
@@ -410,9 +431,47 @@ printf("Malloc failed\n");
 
             coded_frame->real_dts = new_dts;
             coded_frame->real_pts = new_pts;
+#if 0
             coded_frame->cpb_initial_arrival_time = new_dts;
             coded_frame->cpb_final_arrival_time   = new_dts + abs(pic_out.hrd_timing.cpb_final_arrival_time - pic_out.hrd_timing.cpb_final_arrival_time);
+#else
 
+            static int64_t last_dts = 0;
+            static int64_t dts_diff_accum = 0;
+            int64_t dts_diff = 0;
+            if (last_dts > 0) {
+                dts_diff = coded_frame->real_dts - last_dts - (1 * frame_duration);
+                dts_diff_accum += dts_diff;
+            }
+            last_dts = coded_frame->real_dts;
+
+            int64_t ft = pic_out.hrd_timing.cpb_final_arrival_time;
+            int64_t it = pic_out.hrd_timing.cpb_initial_arrival_time;
+            int64_t fit = abs(ft - it);
+
+            coded_frame->cpb_initial_arrival_time += dts_diff_accum;
+
+            coded_frame->cpb_final_arrival_time = coded_frame->cpb_initial_arrival_time + fit;
+#endif
+
+#if DEBUG_CODEC_TIMING
+            {
+                static int64_t last_real_pts = 0;
+                static int64_t last_real_dts = 0;
+
+                printf("adjust: real_pts %12" PRIi64 " ( %12" PRIi64 " )  real_dts %12" PRIi64 " ( %12" PRIi64 " )  iat %12" PRIi64 "  fat %12" PRIi64 "  audio_pts %10" PRIi64" \n",
+                    coded_frame->real_pts,
+                    coded_frame->real_pts - last_real_pts,
+                    coded_frame->real_dts,
+                    coded_frame->real_dts - last_real_dts,
+                    coded_frame->cpb_initial_arrival_time,
+                    coded_frame->cpb_final_arrival_time,
+                    coded_frame->pts);
+
+                last_real_pts = coded_frame->real_pts;
+                last_real_dts = coded_frame->real_dts;
+            }
+#endif
             cpb_removal_time = coded_frame->real_pts; /* Only used for manually eyeballing the video output clock. */
             coded_frame->random_access = pic_out.b_keyframe;
             coded_frame->priority = IS_X264_TYPE_I( pic_out.i_type );

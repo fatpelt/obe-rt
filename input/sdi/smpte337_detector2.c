@@ -30,6 +30,9 @@
 #include "common/common.h"
 #include "encoders/audio/ac3bitstream/hexdump.h"
 
+#define MESSAGE_PREFIX "[SMPTE337]: "
+#define LOCAL_DEBUG 0
+
 struct smpte337_detector2_item_s
 {
 	struct xorg_list list;
@@ -203,6 +206,27 @@ void smpte337_detector2_free(struct smpte337_detector2_s *ctx)
 static void handleCallback(struct smpte337_detector2_s *ctx, uint8_t datamode, uint8_t datatype,
 	uint32_t payload_bitCount, uint8_t *payload, struct avfm_s *avfm)
 {
+#if LOCAL_DEBUG
+static time_t last_cps_time;
+static int cps = 0;
+static int last_cps = 0;
+
+	static int64_t last_time = 0;
+	time_t now;
+	time(&now);
+
+	cps++;
+	printf(MESSAGE_PREFIX "callback with bits %d for time %" PRIi64 " (%" PRIi64 ") cps %d\n",
+		payload_bitCount, avfm->audio_pts_corrected,
+		avfm->audio_pts_corrected - last_time,
+		last_cps);
+	if (last_cps_time != now) {
+		last_cps_time = now;
+		last_cps = cps;
+		cps = 0;
+	}
+	last_time = avfm->audio_pts_corrected;
+#endif
 	ctx->cb(ctx->cbContext, ctx, datamode, datatype, payload_bitCount, payload, avfm);
 }
 
@@ -282,7 +306,6 @@ static void run_detector(struct smpte337_detector2_s *ctx)
 				uint32_t payload_byteCount = payload_bitCount / 8;
 				
 				if (ctx->itemListTotalBytes >= (8 + payload_byteCount)) {
-					int processedCallback = 0;
 					unsigned char *payload = NULL;
 					size_t l = _list_read_alloc(ctx, &payload, 8 + payload_byteCount, &avfm, &readpos);
 					if (l != (8 + payload_byteCount)) {
@@ -309,14 +332,9 @@ static void run_detector(struct smpte337_detector2_s *ctx)
 //						oldpts = newpts;
 						handleCallback(ctx, (dat[5] >> 5) & 0x03, dat[5] & 0x1f,
 							payload_bitCount, (uint8_t *)payload + 8, &avfm);
-
-						processedCallback = 1;
 					}
 					if (payload)
 						free(payload);
-
-					if (processedCallback)
-						break;
 				} else {
 					/* Not enough data in the ring buffer, come back next time. */
 					break;
@@ -366,6 +384,11 @@ size_t smpte337_detector2_write(struct smpte337_detector2_s *ctx, uint8_t *buf,
 
 	/* Now all the fifo contains byte stream re-ordered data, run the detector. */
 	run_detector(ctx);
+
+	/* Some generalized safety warning code, the queue should never be this deep. */
+	if (ctx->itemListTotalBytes > 12000) {
+		printf(MESSAGE_PREFIX "ctx->itemListTotalBytes > 12000 (%d)\n", ctx->itemListTotalBytes);
+	}
 
 	return ret;
 }
