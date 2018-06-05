@@ -680,6 +680,11 @@ static int set_stream( char *command, obecli_command_t *child )
                 if (strcasecmp(video_codec, "HEVC") == 0)
                     video_codec_id = 1; /* HEVC */
 #endif
+#if HAVE_VA_VA_H
+                else
+                if (strcasecmp(video_codec, "AVC_VAAPI") == 0)
+                    video_codec_id = 2; /* AVC via VAAPI */
+#endif
                 else {
                     fprintf(stderr, "video codec selection is invalid\n" );
                     return -1;
@@ -758,6 +763,9 @@ static int set_stream( char *command, obecli_command_t *child )
                 } else
                 if (video_codec_id == 1) {
                     cli.output_streams[output_stream_id].stream_format = VIDEO_HEVC_X265;
+                } else
+                if (video_codec_id == 2) {
+                    cli.output_streams[output_stream_id].stream_format = VIDEO_AVC_VAAPI;
                 }
 
                 avc_param->rc.i_vbv_max_bitrate = obe_otoi( vbv_maxrate, 0 );
@@ -777,6 +785,7 @@ static int set_stream( char *command, obecli_command_t *child )
                 if( profile )
                     parse_enum_value( profile, x264_profile_names, &cli.avc_profile );
 
+                avc_param->i_level_idc = 13;
                 if( level )
                 {
                     if( !strcasecmp( level, "1b" ) )
@@ -1529,7 +1538,9 @@ static int show_output_streams( char *command, obecli_command_t *child )
             if (output_stream->stream_format == VIDEO_AVC)
                 printf( "Video: AVC\n" );
             else if (output_stream->stream_format == VIDEO_HEVC_X265)
-                printf( "Video: HEVC\n" );
+                printf( "Video: HEVC (X265)\n" );
+            else if (output_stream->stream_format == VIDEO_AVC_VAAPI)
+                printf( "Video: AVC (VAAPI)\n" );
             else 
                 printf( "Video: AVC OR HEVC\n");
         }

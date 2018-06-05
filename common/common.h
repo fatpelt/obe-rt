@@ -642,5 +642,6 @@ int64_t get_input_clock_in_mpeg_ticks( obe_t *h );
 void sleep_input_clock( obe_t *h, int64_t i_delay );
 
 int get_non_display_location( int type );
+void obe_raw_frame_printf(obe_raw_frame_t *rf);
 
 #endif

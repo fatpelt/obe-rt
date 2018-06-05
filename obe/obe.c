@@ -1172,6 +1172,35 @@ int obe_start( obe_t *h )
                 pthread_setname_np(h->encoders[h->num_encoders]->encoder_thread, "obe-x265-encoder");
             }
 #endif
+#if HAVE_VA_VA_H
+            else if (h->output_streams[i].stream_format == VIDEO_AVC_VAAPI)
+            {
+                x264_param_t *x264_param = &h->output_streams[i].avc_param;
+                if( h->obe_system == OBE_SYSTEM_TYPE_LOWEST_LATENCY )
+                {
+                    /* This doesn't need to be particularly accurate since x264 calculates the correct value internally */
+                    x264_param->rc.i_vbv_buffer_size = (double)x264_param->rc.i_vbv_max_bitrate * x264_param->i_fps_den / x264_param->i_fps_num;
+                }
+
+                vid_enc_params = calloc( 1, sizeof(*vid_enc_params) );
+                if( !vid_enc_params )
+                {
+                    fprintf( stderr, "Malloc failed\n" );
+                    goto fail;
+                }
+                vid_enc_params->h = h;
+                vid_enc_params->encoder = h->encoders[h->num_encoders];
+                h->encoders[h->num_encoders]->is_video = 1;
+
+                memcpy( &vid_enc_params->avc_param, &h->output_streams[i].avc_param, sizeof(x264_param_t) );
+                if (pthread_create(&h->encoders[h->num_encoders]->encoder_thread, NULL, avc_vaapi_obe_encoder.start_encoder, (void*)vid_enc_params) < 0)
+                {
+                    fprintf( stderr, "Couldn't create x265 encode thread\n" );
+                    goto fail;
+                }
+                pthread_setname_np(h->encoders[h->num_encoders]->encoder_thread, "obe-vid-avcva");
+            }
+#endif
             else if(h->output_streams[i].stream_format == AUDIO_AC_3_BITSTREAM) {
                 input_stream = get_input_stream(h, h->output_streams[i].input_stream_id);
                 h->output_streams[i].sdi_audio_pair = input_stream->sdi_audio_pair;
@@ -1536,3 +1565,20 @@ void obe_close( obe_t *h )
     free( h );
     h = NULL;
 }
+
+void obe_raw_frame_printf(obe_raw_frame_t *rf)
+{
+    printf("raw_frame %p width = %d ", rf, rf->img.width);
+    printf("height = %d ", rf->img.height);
+    printf("csp = %d (%s) ", rf->img.csp, rf->img.csp == PIX_FMT_YUV422P10 ? "PIX_FMT_YUV422P10" : "PIX_FMT_YUV422");
+    printf("planes[%d] = ", rf->img.planes);
+    for (int i = 0; i < rf->img.planes; i++) {
+        printf("%p ", rf->img.plane[i]);
+    }
+    printf("strides = ");
+    for (int i = 0; i < rf->img.planes; i++) {
+        printf("%d ", rf->img.stride[i]);
+    }
+    printf("\n");
+}
+

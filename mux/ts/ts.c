@@ -289,6 +289,7 @@ static const int mpegts_stream_info[][3] =
     { VIDEO_AVC,   LIBMPEGTS_VIDEO_AVC,      LIBMPEGTS_STREAM_ID_MPEGVIDEO },
     { VIDEO_MPEG2, LIBMPEGTS_VIDEO_MPEG2,    LIBMPEGTS_STREAM_ID_MPEGVIDEO },
     { VIDEO_HEVC_X265,  LIBMPEGTS_VIDEO_HEVC,     LIBMPEGTS_STREAM_ID_MPEGVIDEO },
+    { VIDEO_AVC_VAAPI,  LIBMPEGTS_VIDEO_AVC,     LIBMPEGTS_STREAM_ID_MPEGVIDEO },
     /* TODO 302M */
     { AUDIO_MP2,   LIBMPEGTS_AUDIO_MPEG2,    LIBMPEGTS_STREAM_ID_MPEGAUDIO },
     { AUDIO_AC_3,  LIBMPEGTS_AUDIO_AC3,      LIBMPEGTS_STREAM_ID_PRIVATE_1 },
@@ -469,7 +470,7 @@ void *open_muxer( void *ptr )
             stream->stream_identifier = output_stream->ts_opts.stream_identifier;
         }
 
-        if (stream_format == VIDEO_AVC || stream_format == VIDEO_HEVC_X265)
+        if (stream_format == VIDEO_AVC || stream_format == VIDEO_HEVC_X265 || stream_format == VIDEO_AVC_VAAPI)
         {
             encoder_wait( h, output_stream->output_stream_id );
 
@@ -525,7 +526,7 @@ void *open_muxer( void *ptr )
         else
             stream_format = input_stream->stream_format;
 
-        if( stream_format == VIDEO_AVC )
+        if (stream_format == VIDEO_AVC || stream_format == VIDEO_AVC_VAAPI)
         {
             x264_param_t *p_param = encoder->encoder_params;
             int j = 0;

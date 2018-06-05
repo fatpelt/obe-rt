@@ -183,6 +183,7 @@ enum stream_formats_e
     DVB_TABLE_SECTION,
     SMPTE2038,
     VIDEO_HEVC_X265,
+    VIDEO_AVC_VAAPI,
 };
 
 enum mp2_mode_e

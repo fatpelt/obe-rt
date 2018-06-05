@@ -21,6 +21,9 @@ LDFLAGS += -ltwolame -lmpegts -lstdc++ -ldl -lzvbi -lreadline
 if LIBX265
 LDFLAGS += -lx265
 endif
+if LIBVA
+LDFLAGS += -lva -lva-display
+endif
 
 CXXFLAGS = $(CFLAGS)
 
@@ -57,6 +60,9 @@ obecli_SOURCES += ../encoders/audio/ac3bitstream/klringbuffer.c
 obecli_SOURCES += ../encoders/video/avc/x264.c
 if LIBX265
 obecli_SOURCES += ../encoders/video/hevc/x265.c
+endif
+if LIBVA
+obecli_SOURCES += ../encoders/video/avc/vaapi.c
 endif
 obecli_SOURCES += ../encoders/video/sei-timestamp.c
 obecli_SOURCES += ../common/network/udp/udp.c
