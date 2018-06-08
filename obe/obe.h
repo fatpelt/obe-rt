@@ -506,11 +506,15 @@ typedef struct
 int obe_setup_muxer( obe_t *h, obe_mux_opts_t *mux_opts );
 
 /**** Output *****/
+/* These indexes need to match the indexes in array output_modules[].
+ * Make sure these stay fully syncronized.
+ */
 enum output_e
 {
     OUTPUT_UDP, /* MPEG-TS in UDP */
     OUTPUT_RTP, /* MPEG-TS in RTP in UDP */
-//    OUTPUT_LINSYS_ASI,
+    OUTPUT_LINSYS_ASI,
+    OUTPUT_FILE_TS, /* MPEG-TS in file */
 //    OUTPUT_LINSYS_SMPTE_310M,
 };
 
