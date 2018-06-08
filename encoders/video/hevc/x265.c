@@ -221,7 +221,14 @@ static void *x265_start_encoder( void *ptr )
 #endif
 
 	char val[64];
-	x265_param_parse(ctx->hevc_params, "input-res", "1280x720");
+	sprintf(val, "%dx%d", ctx->enc_params->avc_param.i_width, ctx->enc_params->avc_param.i_height);
+	x265_param_parse(ctx->hevc_params, "input-res", val);
+
+	/* TODO: tff or bff? we'll need to implement. */
+	if (ctx->enc_params->avc_param.b_interlaced)
+		x265_param_parse(ctx->hevc_params, "interlace", "1");
+	else
+		x265_param_parse(ctx->hevc_params, "interlace", "0");
 
 	ctx->hevc_params->internalCsp = X265_CSP_I420;
 	x265_param_parse(ctx->hevc_params, "repeat-headers", "1");
