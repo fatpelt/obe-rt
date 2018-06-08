@@ -73,14 +73,14 @@ AC_CHECK_HEADERS([twolame.h],
                  [AC_MSG_ERROR([libtwolame headers not found or not usable])])
 
 ## Check for x265 (optional)
-AC_CHECK_HEADERS([x265XXX.h], HEADER_LIBX265="yes")
+AC_CHECK_HEADERS([x265.h], HEADER_LIBX265="yes")
 #if test "x$HEADER_LIBX265" == "xyes" ; then
 #    LDFLAGS+=" -lx265 "
 #fi
 AM_CONDITIONAL(LIBX265, test x"$HEADER_LIBX265" == x"yes")
 
 ## Check for VAAPI (optional)
-AC_CHECK_HEADERS([va/vaXXX.h], HEADER_LIBVA="yes")
+AC_CHECK_HEADERS([va/va.h], HEADER_LIBVA="yes")
 #if test "x$HEADER_LIBX265" == "xyes" ; then
 #    LDFLAGS+=" -lx265 "
 #fi
