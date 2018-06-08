@@ -1819,7 +1819,23 @@ static void _usage(const char *prog, int exitcode)
     printf("Including Kernel Labs enhancements.\n");
     printf("Version 1.8 (" GIT_VERSION ")\n");
     printf("x264 build#%d (%dbit support)\n", X264_BUILD, X264_BIT_DEPTH);
+    printf("Supports HEVC via X265: %s\n",
+#if HAVE_X265_H
+        "true"
+#else
+        "false"
+#endif
+    );
+
+    printf("Supports HEVC via VAAPI: %s\n",
+#if HAVE_VA_VA_H
+        "true"
+#else
+        "false"
+#endif
+    );
     printf("Decklink SDK %s\n", BLACKMAGIC_DECKLINK_API_VERSION_STRING);
+
     printf("\n");
 
     if (exitcode) {
