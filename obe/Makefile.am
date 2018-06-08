@@ -40,6 +40,7 @@ obecli_SOURCES += obecli.c
 obecli_SOURCES += ../mux/smoothing.c
 obecli_SOURCES += ../mux/ts/ts.c
 obecli_SOURCES += ../output/ip/ip.c
+obecli_SOURCES += ../output/file/file.c
 obecli_SOURCES += ../input/sdi/ancillary.c
 obecli_SOURCES += ../input/sdi/sdi.c
 obecli_SOURCES += ../input/sdi/vbi.c

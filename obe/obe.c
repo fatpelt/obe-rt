@@ -1090,7 +1090,19 @@ int obe_start( obe_t *h )
         char n[64];
         sprintf(n, "outputs #%d", i);
         obe_init_queue( &h->outputs[i]->queue, n );
-        output = ip_output;
+
+        switch (h->outputs[i]->output_dest.type) {
+        case OUTPUT_UDP:
+        case OUTPUT_RTP:
+            output = ip_output;
+            break;
+        case OUTPUT_FILE_TS:
+            output = file_ts_output;
+            break;
+        default:
+            fprintf(stderr, "Invalid output type, undefined.\n");
+            goto fail;
+        }
 
         if( pthread_create( &h->outputs[i]->output_thread, NULL, output.open_output, (void*)h->outputs[i] ) < 0 )
         {

@@ -81,7 +81,7 @@ static const char * const aac_encapsulations[]       = { "adts", "latm", 0 };
 static const char * const mp2_modes[]                = { "auto", "stereo", "joint-stereo", "dual-channel", 0 };
 static const char * const channel_maps[]             = { "", "mono", "stereo", "5.0", "5.1", 0 };
 static const char * const mono_channels[]            = { "left", "right", 0 };
-static const char * const output_modules[]           = { "udp", "rtp", "linsys-asi", 0 };
+static const char * const output_modules[]           = { "udp", "rtp", "linsys-asi", "filets", 0 };
 static const char * const addable_streams[]          = { "audio", "ttx" };
 static const char * const preset_names[]        = { "ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow", "placebo", NULL };
 static const char * entropy_modes[] = { "cabac", "cavlc", NULL };
@@ -1654,7 +1654,7 @@ static int start_encode( char *command, obecli_command_t *child )
     FAIL_IF_ERROR( !cli.output.num_outputs, "No outputs selected\n" );
     for( int i = 0; i < cli.output.num_outputs; i++ )
     {
-        if( ( cli.output.outputs[i].type == OUTPUT_UDP || cli.output.outputs[i].type == OUTPUT_RTP ) &&
+        if( ( cli.output.outputs[i].type == OUTPUT_UDP || cli.output.outputs[i].type == OUTPUT_RTP || cli.output.outputs[i].type == OUTPUT_FILE_TS ) &&
              !cli.output.outputs[i].target )
         {
             fprintf( stderr, "No output target chosen. Output-ID %d\n", i );
