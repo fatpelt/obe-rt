@@ -54,19 +54,19 @@ struct userdata_s
 	struct avfm_s avfm;
 };
 
-struct userdata_s *userdata_calloc()
+static struct userdata_s *userdata_calloc()
 {
 	struct userdata_s *ud = calloc(1, sizeof(*ud));
 	return ud;
 }
 
-int userdata_set(struct userdata_s *ud, struct avfm_s *s)
+static int userdata_set(struct userdata_s *ud, struct avfm_s *s)
 {
 	memcpy(&ud->avfm, s, sizeof(struct avfm_s));
 	return 0;
 }
 
-void userdata_free(struct userdata_s *ud)
+static void userdata_free(struct userdata_s *ud)
 {
 	memset(ud, 0, sizeof(*ud));
 	free(ud);
