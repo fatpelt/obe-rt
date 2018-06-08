@@ -372,6 +372,14 @@ printf("Malloc failed\n");
             coded_frame->type = CF_VIDEO;
             coded_frame->len = frame_size;
 
+#if 0
+static FILE *fh = NULL;
+if (fh == NULL)
+  fh = fopen("/tmp/x264.nals", "wb");
+if (fh)
+  fwrite(coded_frame->data, 1, frame_size, fh);
+#endif
+
             /* We've detected video frame loss that wasn't related to an upstream signal loss.
              * ensure we pass that data to the mux.
              */
