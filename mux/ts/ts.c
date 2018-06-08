@@ -535,20 +535,14 @@ void *open_muxer( void *ptr )
 
             if( ts_setup_mpegvideo_stream( w, stream->pid, p_param->i_level_idc, avc_profiles[j][1], 0, 0, 0 ) < 0 )
             {
-                fprintf( stderr, "[ts] Could not setup video stream\n" );
+                fprintf( stderr, "[ts] Could not setup AVC video stream\n" );
                 goto end;
             }
         }
         else if (stream_format == VIDEO_HEVC_X265)
         {
-            x264_param_t *p_param = encoder->encoder_params;
-            int j = 0;
-            while( avc_profiles[j][0] && p_param->i_profile != avc_profiles[j][0] )
-                j++;
-
-            if( ts_setup_mpegvideo_stream( w, stream->pid, p_param->i_level_idc, avc_profiles[j][1], 0, 0, 0 ) < 0 )
-            {
-                fprintf( stderr, "[ts] Could not setup video stream\n" );
+            if (ts_setup_mpegvideo_stream(w, stream->pid, 40, HEVC_PROFILE_MAIN, 0, 0, 0) < 0) {
+                fprintf(stderr, "[ts] Could not setup HEVC video stream\n");
                 goto end;
             }
         }
