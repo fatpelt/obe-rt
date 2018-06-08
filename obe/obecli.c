@@ -785,7 +785,10 @@ static int set_stream( char *command, obecli_command_t *child )
                 if( profile )
                     parse_enum_value( profile, x264_profile_names, &cli.avc_profile );
 
+#if 0
+// VAAPI
                 avc_param->i_level_idc = 13;
+#endif
                 if( level )
                 {
                     if( !strcasecmp( level, "1b" ) )
