@@ -804,7 +804,10 @@ void *open_muxer( void *ptr )
         pthread_mutex_unlock( &h->mux_queue.mutex );
 
         // TODO figure out last frame
-        ts_write_frames( w, frames, num_frames, &output, &len, &pcr_list );
+        if (ts_write_frames( w, frames, num_frames, &output, &len, &pcr_list) != 0) {
+            fprintf(stderr, "ts_write_frames failed\n");
+        }        
+	
 #if 0
 //printf("bb = %d len = %d\n", bb, len);
 static FILE *fh = NULL;
