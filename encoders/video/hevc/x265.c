@@ -31,6 +31,18 @@
 
 #define MESSAGE_PREFIX "[x265]:"
 
+#define SERIALIZE_CODED_FRAMES 0
+#if SERIALIZE_CODED_FRAMES
+static FILE *sfh = NULL;
+static void serialize_coded_frame(obe_coded_frame_t *cf)
+{
+    if (!sfh)
+        sfh = fopen("/storage/dev/x265-out.cf", "wb");
+    if (sfh)
+        coded_frame_serializer_write(sfh, cf);
+}
+#endif
+
 struct context_s
 {
 	obe_vid_enc_params_t *enc_params;
@@ -537,9 +549,15 @@ if (fh)
 
 					if (ctx->h->obe_system == OBE_SYSTEM_TYPE_LOWEST_LATENCY || ctx->h->obe_system == OBE_SYSTEM_TYPE_LOW_LATENCY) {
 						cf->arrival_time = arrival_time;
+#if SERIALIZE_CODED_FRAMES
+						serialize_coded_frame(cf);
+#endif
 						add_to_queue(&ctx->h->mux_queue, cf);
 						//printf(MESSAGE_PREFIX " Encode Latency %"PRIi64" \n", obe_mdate() - cf->arrival_time);
 					} else {
+#if SERIALIZE_CODED_FRAMES
+						serialize_coded_frame(cf);
+#endif
 						add_to_queue(&ctx->h->enc_smoothing_queue, cf);
 					}
 				} /* For each NAL */
