@@ -2752,12 +2752,12 @@ static void *avc_vaapi_start_encoder( void *ptr )
 		goto out3;
 	}
 
-    /* upload RAW YUV data into all surfaces */
-    if (ctx->srcyuv_fp != NULL) {
-        for (int i = 0; i < SURFACE_NUM; i++)
-            load_surface(ctx, ctx->src_surface[i], i);
-    } else
-        upload_source_YUV_once_for_all(ctx);
+	/* upload RAW YUV data into all surfaces */
+	if (ctx->srcyuv_fp != NULL) {
+		for (int i = 0; i < SURFACE_NUM; i++)
+			load_surface(ctx, ctx->src_surface[i], i);
+	} else
+		upload_source_YUV_once_for_all(ctx);
 
 #if 0
 //	ctx->hevc_params->fpsDenom = ctx->enc_params->avc_param.i_fps_den;
