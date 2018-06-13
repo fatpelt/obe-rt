@@ -573,7 +573,9 @@ if (fh)
 					cf->real_pts                 = ctx->hevc_picture_out->pts + 45000;
 					cf->real_dts                 = ctx->hevc_picture_out->dts;
 					cf->cpb_initial_arrival_time = cf->real_pts;
-					cf->cpb_final_arrival_time   = cf->real_pts + 45000;
+
+					double estimated_final = ((double)cf->len / 0.0810186) + (double)cf->cpb_initial_arrival_time;
+					cf->cpb_final_arrival_time   = estimated_final;
 
 #if 0
 // X264 specific, I don't think we need to do this for HEVC
