@@ -284,6 +284,8 @@
 #define MIN_PID 0x30
 #define MAX_PID 0x1fff
 
+#define PREFIX "[Mux]: "
+
 static const int mpegts_stream_info[][3] =
 {
     { VIDEO_AVC,   LIBMPEGTS_VIDEO_AVC,      LIBMPEGTS_STREAM_ID_MPEGVIDEO },
@@ -391,6 +393,16 @@ void *open_muxer( void *ptr )
     {
         fprintf( stderr, "[ts] could not create writer\n" );
         return NULL;
+    }
+
+    const char *tswriter_filename = getenv("OBE_LIBMPEGTS_WRITER_FILENAME");
+    if (tswriter_filename) {
+        printf(PREFIX "Warning -- Dumping all TSWRITER payload to '%s'\n", tswriter_filename);
+        if (libmpegts_frame_serializer_open_write(w, tswriter_filename) < 0) {
+            fprintf(stderr, PREFIX "Unable to create file %s, aborting.\n", tswriter_filename);
+            ts_close_writer(w);
+            return NULL;
+        }
     }
 
     params.num_programs = 1;
