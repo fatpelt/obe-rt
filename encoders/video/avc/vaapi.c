@@ -2694,17 +2694,14 @@ static size_t avc_vaapi_deliver_nals(struct context_s *ctx, uint8_t *buf, int le
 	cf->real_dts                 = avfm->audio_pts + offset;
 	cf->pts                      = cf->real_pts;
 	cf->cpb_initial_arrival_time = cf->real_dts - offset;
-	cf->cpb_final_arrival_time   = cf->cpb_initial_arrival_time + 450000;
+
+	double estimated_final = ((double)cf->len / 0.0810186) + (double)cf->cpb_initial_arrival_time;
+	cf->cpb_final_arrival_time   = estimated_final;
 
 	cf->priority = (frame_type == FRAME_IDR);
 	cf->random_access = (frame_type == FRAME_IDR);
 
-	printf(MESSAGE_PREFIX " real_pts:%" PRIi64 " real_dts:%" PRIi64 " (%" PRIi64 " %" PRIi64 ") pts:%" PRIi64 " arrival:%" PRIi64 " bytes:%d\n",
-		cf->real_pts, cf->real_dts,
-		cf->cpb_initial_arrival_time, cf->cpb_final_arrival_time,
-		cf->pts,
-		cf->arrival_time,
-		cf->len);
+	coded_frame_print(cf);
 
 	if (ctx->h->obe_system == OBE_SYSTEM_TYPE_LOWEST_LATENCY || ctx->h->obe_system == OBE_SYSTEM_TYPE_LOW_LATENCY) {
 		//cf->arrival_time = arrival_time;
