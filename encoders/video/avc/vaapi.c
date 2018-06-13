@@ -884,8 +884,8 @@ static int vaapi_init_va(struct context_s *ctx)
     ctx->h264_maxref = (1<<16|1);
     ctx->h264_entropy_mode = 1; /* cabac */
     ctx->frame_rate = 60;
-    ctx->frame_width = 1920;
-    ctx->frame_height = 1080;
+    ctx->frame_width = ctx->enc_params->avc_param.i_width;
+    ctx->frame_height = ctx->enc_params->avc_param.i_height;
     ctx->frame_width_mbaligned = (ctx->frame_width + 15) & (~15);
     ctx->frame_height_mbaligned = (ctx->frame_height + 15) & (~15);
     ctx->encode_syncmode = 1;
