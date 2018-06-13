@@ -1846,6 +1846,7 @@ static void _usage(const char *prog, int exitcode)
         printf("\t-h              - Display command line helps.\n");
         printf("\t-c <script.txt> - Start OBE and begin executing a list of commands.\n");
         printf("\t-L <string>     - When writing to syslog, use the 'obe-<string>' name/tag. [def: unset]\n");
+        printf("\t-C <file.cf>    - Read and consoledump a codec.cf file.\n");
         printf("\n");
         exit(exitcode);
     }
@@ -1862,8 +1863,33 @@ int main( int argc, char **argv )
     int opt;
     const char *syslogSuffix = NULL;
 
-    while ((opt = getopt(argc, argv, "c:hL:")) != -1) {
+    while ((opt = getopt(argc, argv, "c:C:hL:")) != -1) {
         switch (opt) {
+        case 'C':
+        {
+            FILE *fh = fopen(optarg, "rb");
+            if (!fh) {
+                    fprintf(stderr, "Unable to open cf input file '%s'.\n", optarg);
+                    return 0;
+            }
+
+            unsigned int count = 0;
+            while (!feof(fh)) {
+                    obe_coded_frame_t *f;
+                    size_t rlen = coded_frame_serializer_read(fh, &f);
+                    if (rlen <= 0)
+                            break;
+
+                    printf("[%8d]  ", count++);
+                    coded_frame_print(f);
+
+                    destroy_coded_frame(f);
+            }
+
+            fclose(fh);
+            exit(0);
+         }
+            break;
         case 'c':
             script = optarg;
             {
