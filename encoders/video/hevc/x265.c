@@ -93,6 +93,17 @@ static int convert_obe_to_x265_pic(struct context_s *ctx, x265_picture *p, struc
 	obe_image_t *img = &rf->img;
 	int count = 0, idx = 0;
 
+	/* Dealloc any previous SEI pointers and payload, if we had any. */
+	if (p->userSEI.numPayloads) {
+		for (int i = 0; i < p->userSEI.numPayloads; i++) {
+			free(p->userSEI.payloads[i].payload);
+			p->userSEI.payloads[i].payload = NULL;
+			p->userSEI.payloads[idx].payloadSize = 0;
+		}
+		free(p->userSEI.payloads);
+		p->userSEI.payloads = NULL;
+	}
+
 	x265_picture_init(ctx->hevc_params, p);
 
 	p->sliceType = X265_TYPE_AUTO;
@@ -137,7 +148,8 @@ static int convert_obe_to_x265_pic(struct context_s *ctx, x265_picture *p, struc
 			if (rf->user_data[i].type == USER_DATA_AVC_REGISTERED_ITU_T35 || rf->user_data[i].type == USER_DATA_AVC_UNREGISTERED) {
 				p->userSEI.payloads[idx].payloadType = rf->user_data[i].type;
 				p->userSEI.payloads[idx].payloadSize = rf->user_data[i].len;
-				p->userSEI.payloads[idx].payload = rf->user_data[i].data;
+				p->userSEI.payloads[idx].payload = malloc(p->userSEI.payloads[idx].payloadSize);
+				memcpy(p->userSEI.payloads[idx].payload, rf->user_data[i].data, p->userSEI.payloads[idx].payloadSize);
 				idx++;
 			} else {
 				syslog(LOG_WARNING, MESSAGE_PREFIX " Invalid user data presented to encoder - type %i\n", rf->user_data[i].type);
@@ -161,7 +173,7 @@ static int convert_obe_to_x265_pic(struct context_s *ctx, x265_picture *p, struc
 	x = &p->userSEI.payloads[count - 1];
 	x->payloadType = USER_DATA_AVC_UNREGISTERED;
 	x->payloadSize = SEI_TIMESTAMP_PAYLOAD_LENGTH;
-	x->payload = set_timestamp_alloc();
+	x->payload = set_timestamp_alloc(); /* Freed when we enter the function prior to pic re-init. */
 
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
@@ -294,6 +306,8 @@ static void *x265_start_encoder( void *ptr )
 	/* Wake up the muxer */
 	pthread_cond_broadcast(&ctx->encoder->queue.in_cv);
 	pthread_mutex_unlock(&ctx->encoder->queue.mutex);
+
+	x265_picture_init(ctx->hevc_params, ctx->hevc_picture_in);
 
 	while (1) {
 		pthread_mutex_lock(&ctx->encoder->queue.mutex);
