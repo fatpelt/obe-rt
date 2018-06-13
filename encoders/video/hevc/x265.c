@@ -43,6 +43,22 @@ static void serialize_coded_frame(obe_coded_frame_t *cf)
 }
 #endif
 
+#define FRAMES_FROM_DISK 0
+#if FRAMES_FROM_DISK
+static FILE *dsfh = NULL;
+static obe_coded_frame_t *deserialize_coded_frame()
+{
+    obe_coded_frame_t *cf = NULL;
+
+    if (!dsfh)
+        dsfh = fopen("/storage/dev/x265-in.cf", "rb");
+    if (dsfh)
+        coded_frame_serializer_read(dsfh, &cf);
+
+    return cf;
+}
+#endif
+
 struct context_s
 {
 	obe_vid_enc_params_t *enc_params;
@@ -357,6 +373,9 @@ static void *x265_start_encoder( void *ptr )
 		//printf(MESSAGE_PREFIX " popped a raw frame[%" PRIu64 "] -- pts %" PRIi64 "\n", ctx->raw_frame_count, rf->avfm.audio_pts);
 #endif
 
+
+#if FRAMES_FROM_DISK
+#else
 		struct userdata_s *ud = userdata_calloc();
 
 		/* convert obe_frame_t into x264 friendly struct.
@@ -383,6 +402,8 @@ static void *x265_start_encoder( void *ptr )
 //			pic.param = &enc_params->avc_param;
 
 		}
+#endif
+
 #if 0
         /* Update speedcontrol based on the system state */
         if( h->obe_system == OBE_SYSTEM_TYPE_GENERIC )
@@ -425,8 +446,13 @@ static void *x265_start_encoder( void *ptr )
 			/* Once the pipeline is completely full, x265_encoder_encode() will block until the next output picture is complete. */
 
 			if (rf) {
+#if FRAMES_FROM_DISK
+				ret = 55;
+				ctx->i_nal = 0;
+#else
 				ctx->hevc_picture_in->pts = rf->avfm.audio_pts;
 				ret = x265_encoder_encode(ctx->hevc_encoder, &ctx->hevc_nals, &ctx->i_nal, ctx->hevc_picture_in, ctx->hevc_picture_out);
+#endif
 			}
 
 #if SEI_TIMESTAMPING
@@ -465,6 +491,41 @@ static void *x265_start_encoder( void *ptr )
 				continue;
 			}
 
+#if FRAMES_FROM_DISK
+			if (ret == 55) {
+				/* Read the next frame from disk, and use that instead.... */
+				while (1) {
+					obe_coded_frame_t *cf = deserialize_coded_frame();
+					if (!cf)
+						break;
+
+					/* Dont' assume we can reference cf after the queue add. */
+					int len = cf->len;
+
+					printf("[from disk]  ");
+					coded_frame_print(cf);
+
+					if (ctx->h->obe_system == OBE_SYSTEM_TYPE_LOWEST_LATENCY || ctx->h->obe_system == OBE_SYSTEM_TYPE_LOW_LATENCY) {
+						cf->arrival_time = arrival_time;
+						add_to_queue(&ctx->h->mux_queue, cf);
+					} else {
+						add_to_queue(&ctx->h->enc_smoothing_queue, cf);
+					}
+
+					/* Break if we've process a large frame (iframe), otherwise assume its SPS/PPS/SEI
+					 * and continue processing.
+					 */
+					if (len > 250)
+						break;
+				}
+#if 0
+				if (ud) {
+					userdata_free(ud);
+					ud = NULL;
+				}
+#endif
+			} else
+#endif
 			if (ret > 0) {
 				for (int z = 0; z < ctx->i_nal; z++) {
 					obe_coded_frame_t *cf = new_coded_frame(ctx->encoder->output_stream_id, ctx->hevc_nals[z].sizeBytes);
@@ -558,7 +619,34 @@ if (fh)
 #if SERIALIZE_CODED_FRAMES
 						serialize_coded_frame(cf);
 #endif
+#if FRAMES_FROM_DISK
+						/* Discard the encoded output. */
+						destroy_coded_frame(cf);
+
+						/* Read the next frame from disk, and use that instead.... */
+						while (1) {
+							obe_coded_frame_t *cf = deserialize_coded_frame();
+							if (!cf)
+								break;
+
+							/* Dont' assume we can reference cf after the queue add. */
+							int len = cf->len;
+
+							printf("[from disk]  ");
+							coded_frame_print(cf);
+
+							add_to_queue(&ctx->h->enc_smoothing_queue, cf);
+
+
+							/* Break if we've process a large frame (iframe), otherwise assume its SPS/PPS/SEI
+							 * and continue processing.
+							 */
+							if (len > 250)
+								break;
+						}
+#else
 						add_to_queue(&ctx->h->enc_smoothing_queue, cf);
+#endif
 					}
 				} /* For each NAL */
 			} /* if nal_bytes > 0 */
