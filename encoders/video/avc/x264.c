@@ -29,6 +29,20 @@
 
 int64_t cpb_removal_time = 0;
 
+#define SERIALIZE_CODED_FRAMES 0
+#if SERIALIZE_CODED_FRAMES
+static void serialize_coded_frame(obe_coded_frame_t *cf)
+{
+    static FILE *fh = NULL;
+    if (!fh) {
+        fh = fopen("/storage/dev/x264.cf", "wb");
+        printf("Wwarning -- X264 coded frames will persist to disk\n");
+    }
+    if (fh)
+        coded_frame_serializer_write(fh, cf);
+}
+#endif
+
 static void x264_logger( void *p_unused, int i_level, const char *psz_fmt, va_list arg )
 {
     if( i_level <= X264_LOG_INFO )
@@ -488,11 +502,18 @@ if (fh)
             if( h->obe_system == OBE_SYSTEM_TYPE_LOWEST_LATENCY || h->obe_system == OBE_SYSTEM_TYPE_LOW_LATENCY )
             {
                 coded_frame->arrival_time = arrival_time;
+#if SERIALIZE_CODED_FRAMES
+                serialize_coded_frame(coded_frame);
+#endif
                 add_to_queue( &h->mux_queue, coded_frame );
                 //printf("\n Encode Latency %"PRIi64" \n", obe_mdate() - coded_frame->arrival_time );
             }
-            else
+            else {
+#if SERIALIZE_CODED_FRAMES
+                serialize_coded_frame(coded_frame);
+#endif
                 add_to_queue( &h->enc_smoothing_queue, coded_frame );
+            }
         }
      }
 
