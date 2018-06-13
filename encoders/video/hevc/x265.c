@@ -484,10 +484,11 @@ if (fh)
 					if (out_ud) {
 						/* Make sure we push the original hardware timing into the new frame. */
 						memcpy(&cf->avfm, &out_ud->avfm, sizeof(struct avfm_s));
-						free(ctx->hevc_picture_out->userData);
 						ctx->hevc_picture_out->userData = 0;
 
 						cf->pts = out_ud->avfm.audio_pts;
+						userdata_free(out_ud);
+						out_ud = NULL;
 					} else {
 						//fprintf(stderr, MESSAGE_PREFIX " missing pic out userData\n");
 					}
