@@ -80,7 +80,7 @@ AC_CHECK_HEADERS([x265.h], HEADER_LIBX265="yes")
 AM_CONDITIONAL(LIBX265, test x"$HEADER_LIBX265" == x"yes")
 
 ## Check for VAAPI (optional)
-AC_CHECK_HEADERS([va/va.h], HEADER_LIBVA="yes")
+AC_CHECK_HEADERS([va/vaXX.h], HEADER_LIBVA="yes")
 #if test "x$HEADER_LIBX265" == "xyes" ; then
 #    LDFLAGS+=" -lx265 "
 #fi
