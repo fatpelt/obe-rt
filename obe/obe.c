@@ -154,6 +154,68 @@ void destroy_coded_frame( obe_coded_frame_t *coded_frame )
     free( coded_frame );
 }
 
+void coded_frame_print(obe_coded_frame_t *cf)
+{
+	double v = (double)cf->len / (cf->cpb_final_arrival_time - cf->cpb_initial_arrival_time);
+	printf("strm %d  type %c  len %7d  rpts %13" PRIi64 "  rdts %13" PRIi64 "  iat %13" PRIi64 "  fat %13" PRIi64 " (%11.09f)  at %13" PRIi64 "  pr %d  ra %d -- ",
+		cf->output_stream_id,
+		cf->type == CF_VIDEO ? 'V' :
+		cf->type == CF_AUDIO ? 'A' : 'U',
+		cf->len,
+		cf->real_pts,
+		cf->real_dts,
+		cf->cpb_initial_arrival_time,
+		cf->cpb_final_arrival_time,
+		v,
+		cf->arrival_time,
+		cf->priority,
+		cf->random_access);
+
+	for (int i = 0; i < 16; i++)
+		printf("%02x ", cf->data[i]);
+
+	printf("\n");
+}
+
+size_t coded_frame_serializer_read(FILE *fh, obe_coded_frame_t **f)
+{
+	uint32_t flen = sizeof(*f);
+
+	size_t rlen = 0;
+	rlen += fread(&flen, 1, sizeof(flen), fh);
+	if (flen != sizeof(obe_coded_frame_t))
+		return 0;
+
+	obe_coded_frame_t *cf = malloc(sizeof(*cf));
+	if (!cf)
+		return 0;
+
+	rlen += fread(cf, 1, sizeof(*cf), fh);
+
+	cf->data = malloc(cf->len);
+	if (!cf->data) {
+		free(cf);
+		return 0;
+	}
+
+	rlen += fread(cf->data, 1, cf->len, fh);
+
+	*f = cf;
+
+	return rlen;
+}
+
+size_t coded_frame_serializer_write(FILE *fh, obe_coded_frame_t *cf)
+{
+	uint32_t flen = sizeof(*cf);
+
+	size_t wlen = 0;
+	wlen += fwrite(&flen, 1, sizeof(flen), fh);
+	wlen += fwrite(cf, 1, sizeof(*cf), fh);
+	wlen += fwrite(cf->data, 1, cf->len, fh);
+	return wlen;
+}
+
 void obe_release_video_data( void *ptr )
 {
      obe_raw_frame_t *raw_frame = ptr;
