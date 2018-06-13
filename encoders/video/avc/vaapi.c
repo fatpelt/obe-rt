@@ -82,16 +82,6 @@ struct context_s
 	obe_vid_enc_params_t *enc_params;
 	obe_t *h;
 	obe_encoder_t *encoder;
-#if 0
-	/* */
-	x265_encoder *hevc_encoder;
-	x265_param   *hevc_params;
-	x265_picture *hevc_picture_in;
-	x265_picture *hevc_picture_out;
-
-	uint32_t      i_nal;
-	x265_nal     *hevc_nals;
-#endif
 
 	uint64_t      raw_frame_count;
 
@@ -2525,119 +2515,6 @@ static int vaapi_deinit_va(struct context_s *ctx)
 }
 
 /* END VAAPI SPECIFIC */
-
-
-#if 0
-const char *sliceTypeLookup(uint32_t type)
-{
-	switch(type) {
-	case X265_TYPE_AUTO: return "X265_TYPE_AUTO";
-	case X265_TYPE_IDR:  return "X265_TYPE_IDR";
-	case X265_TYPE_I:    return "X265_TYPE_I";
-	case X265_TYPE_P:    return "X265_TYPE_P";
-	case X265_TYPE_BREF: return "X265_TYPE_BREF";
-	case X265_TYPE_B:    return "X265_TYPE_B";
-	default:             return "UNKNOWN";
-	}
-}
-
-/* Convert a obe_raw_frame_t into a x264_picture_t struct.
- * Incoming frame is colorspace YUV420P.
- */
-static int convert_obe_to_x265_pic(struct context_s *ctx, x265_picture *p, struct userdata_s *ud, obe_raw_frame_t *rf)
-{
-	obe_image_t *img = &rf->img;
-	int count = 0, idx = 0;
-
-	x265_picture_init(ctx->hevc_params, p);
-
-	p->sliceType = X265_TYPE_AUTO;
-	p->bitDepth = 8;
-	p->stride[0] = img->stride[0];
-	p->stride[1] = img->stride[1]; // >> x265_cli_csps[p->colorSpace].width[1];
-	p->stride[2] = img->stride[2]; // >> x265_cli_csps[p->colorSpace].width[2];
-
-	for (int i = 0; i < 3; i++) {
-		p->stride[i] = img->stride[i];
-		p->planes[i] = img->plane[i];
-	}
-
-	p->colorSpace = img->csp == PIX_FMT_YUV422P || img->csp == PIX_FMT_YUV422P10 ? X265_CSP_I422 : X265_CSP_I420;
-#ifdef HIGH_BIT_DEPTH
-	p->colorSpace |= X265_CSP_HIGH_DEPTH;
-#endif
-
-	for (int i = 0; i < rf->num_user_data; i++) {
-		/* Only give correctly formatted data to the encoder */
-		if (rf->user_data[i].type == USER_DATA_AVC_REGISTERED_ITU_T35 ||
-			rf->user_data[i].type == USER_DATA_AVC_UNREGISTERED) {
-			count++;
-		}
-	}
-
-#if SEI_TIMESTAMPING
-	/* Create space for unregister data, containing before and after timestamps. */
-	count += 1;
-#endif
-
-	p->userSEI.numPayloads = count;
-
-	if (p->userSEI.numPayloads) {
-		p->userSEI.payloads = malloc(p->userSEI.numPayloads * sizeof(*p->userSEI.payloads));
-		if (!p->userSEI.payloads)
-			return -1;
-
-		for (int i = 0; i < rf->num_user_data; i++) {
-			/* Only give correctly formatted data to the encoder */
-
-			if (rf->user_data[i].type == USER_DATA_AVC_REGISTERED_ITU_T35 || rf->user_data[i].type == USER_DATA_AVC_UNREGISTERED) {
-				p->userSEI.payloads[idx].payloadType = rf->user_data[i].type;
-				p->userSEI.payloads[idx].payloadSize = rf->user_data[i].len;
-				p->userSEI.payloads[idx].payload = rf->user_data[i].data;
-				idx++;
-			} else {
-				syslog(LOG_WARNING, MESSAGE_PREFIX " Invalid user data presented to encoder - type %i\n", rf->user_data[i].type);
-				free(rf->user_data[i].data);
-			}
-			/* Set the pointer to NULL so only x264 can free the data if necessary */
-			rf->user_data[i].data = NULL;
-		}
-	} else if (rf->num_user_data) {
-		for (int i = 0; i < rf->num_user_data; i++) {
-			syslog(LOG_WARNING, MESSAGE_PREFIX " Invalid user data presented to encoder - type %i\n", rf->user_data[i].type);
-			free(rf->user_data[i].data);
-		}
-	}
-
-#if SEI_TIMESTAMPING
-	x265_sei_payload *x;
-
-	/* Start time - Always the last SEI */
-	static uint32_t framecount = 0;
-	x = &p->userSEI.payloads[count - 1];
-	x->payloadType = USER_DATA_AVC_UNREGISTERED;
-	x->payloadSize = SEI_TIMESTAMP_PAYLOAD_LENGTH;
-	x->payload = set_timestamp_alloc();
-
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-
-	set_timestamp_field_set(x->payload, 1, framecount);
-	set_timestamp_field_set(x->payload, 2, avfm_get_hw_received_tv_sec(&rf->avfm));
-	set_timestamp_field_set(x->payload, 3, avfm_get_hw_received_tv_usec(&rf->avfm));
-	set_timestamp_field_set(x->payload, 4, tv.tv_sec);
-	set_timestamp_field_set(x->payload, 5, tv.tv_usec);
-	set_timestamp_field_set(x->payload, 6, 0);
-	set_timestamp_field_set(x->payload, 7, 0);
-
-	/* The remaining 8 bytes (time exit from compressor fields)
-	 * will be filled when the frame exists the compressor. */
-	framecount++;
-#endif
-
-	return 0;
-}
-#endif
 
 static size_t avc_vaapi_deliver_nals(struct context_s *ctx, uint8_t *buf, int lengthBytes, obe_raw_frame_t *rf, int frame_type)
 {
