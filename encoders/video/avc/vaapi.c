@@ -2908,6 +2908,9 @@ static void *avc_vaapi_start_encoder( void *ptr )
 				ctx->frame_width, ctx->frame_height);
 
 #if SEI_TIMESTAMPING
+/* NO SEI support yet. When we do add it, watch out for mallocs and small leaks
+ * if we clone the HEVC iplementaiton.
+ */
 /* Start time - Always the last SEI */
 static uint32_t framecount = 0;
 x = &p->userSEI.payloads[count - 1];
