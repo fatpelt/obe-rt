@@ -538,7 +538,7 @@ void *open_muxer( void *ptr )
         else
             stream_format = input_stream->stream_format;
 
-        if (stream_format == VIDEO_AVC || stream_format == VIDEO_AVC_VAAPI)
+        if (stream_format == VIDEO_AVC)
         {
             x264_param_t *p_param = encoder->encoder_params;
             int j = 0;
@@ -548,6 +548,13 @@ void *open_muxer( void *ptr )
             if( ts_setup_mpegvideo_stream( w, stream->pid, p_param->i_level_idc, avc_profiles[j][1], 0, 0, 0 ) < 0 )
             {
                 fprintf( stderr, "[ts] Could not setup AVC video stream\n" );
+                goto end;
+            }
+        }
+        else if (stream_format == VIDEO_AVC_VAAPI)
+        {
+            if (ts_setup_mpegvideo_stream(w, stream->pid, 40, AVC_HIGH, 0, 0, 0) < 0) {
+                fprintf(stderr, "[ts] Could not setup HEVC video stream\n");
                 goto end;
             }
         }
