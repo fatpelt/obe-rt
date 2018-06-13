@@ -176,6 +176,20 @@ static int load_surface(struct context_s *ctx, VASurfaceID surface_id, unsigned 
 static int upload_source_YUV_once_for_all(struct context_s *ctx);
 static size_t avc_vaapi_deliver_nals(struct context_s *ctx, uint8_t *buf, int lengthBytes, obe_raw_frame_t *rf, int frame_type);
 
+#define SERIALIZE_CODED_FRAMES 0
+#if SERIALIZE_CODED_FRAMES
+static void serialize_coded_frame(obe_coded_frame_t *cf)
+{
+    static FILE *fh = NULL;
+    if (!fh) {
+        fh = fopen("/storage/dev/avc-vaapi.cf", "wb");
+        printf("Wwarning -- avc vaapi coded frames will persist to disk\n");
+    }
+    if (fh)
+        coded_frame_serializer_write(fh, cf);
+}
+#endif
+
 struct userdata_s
 {
 	struct avfm_s avfm;
@@ -2694,8 +2708,14 @@ static size_t avc_vaapi_deliver_nals(struct context_s *ctx, uint8_t *buf, int le
 
 	if (ctx->h->obe_system == OBE_SYSTEM_TYPE_LOWEST_LATENCY || ctx->h->obe_system == OBE_SYSTEM_TYPE_LOW_LATENCY) {
 		//cf->arrival_time = arrival_time;
+#if SERIALIZE_CODED_FRAMES
+		serialize_coded_frame(cf);
+#endif
 		add_to_queue(&ctx->h->mux_queue, cf);
 	} else {
+#if SERIALIZE_CODED_FRAMES
+		serialize_coded_frame(cf);
+#endif
 		add_to_queue(&ctx->h->enc_smoothing_queue, cf);
 	}
 
