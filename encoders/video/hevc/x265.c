@@ -180,6 +180,7 @@ static int convert_obe_to_x265_pic(struct context_s *ctx, x265_picture *p, struc
 				idx++;
 			} else {
 				syslog(LOG_WARNING, MESSAGE_PREFIX " Invalid user data presented to encoder - type %i\n", rf->user_data[i].type);
+				printf(MESSAGE_PREFIX " (1) Invalid user data presented to encoder - type %i\n", rf->user_data[i].type);
 				free(rf->user_data[i].data);
 			}
 			/* Set the pointer to NULL so only x264 can free the data if necessary */
@@ -188,6 +189,7 @@ static int convert_obe_to_x265_pic(struct context_s *ctx, x265_picture *p, struc
 	} else if (rf->num_user_data) {
 		for (int i = 0; i < rf->num_user_data; i++) {
 			syslog(LOG_WARNING, MESSAGE_PREFIX " Invalid user data presented to encoder - type %i\n", rf->user_data[i].type);
+			printf(MESSAGE_PREFIX " (2) Invalid user data presented to encoder - type %i\n", rf->user_data[i].type);
 			free(rf->user_data[i].data);
 		}
 	}
