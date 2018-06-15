@@ -373,8 +373,6 @@ static void *x265_start_encoder( void *ptr )
 #endif
 
 
-#if FRAMES_FROM_DISK
-#else
 		struct userdata_s *ud = userdata_calloc();
 
 		/* convert obe_frame_t into x264 friendly struct.
@@ -401,7 +399,6 @@ static void *x265_start_encoder( void *ptr )
 //			pic.param = &enc_params->avc_param;
 
 		}
-#endif
 
 #if 0
         /* Update speedcontrol based on the system state */
@@ -517,12 +514,10 @@ static void *x265_start_encoder( void *ptr )
 					if (len > 250)
 						break;
 				}
-#if 0
 				if (ud) {
 					userdata_free(ud);
 					ud = NULL;
 				}
-#endif
 			} else
 #endif
 			if (ret > 0) {
