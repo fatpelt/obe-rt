@@ -96,7 +96,6 @@ static int userdata_set(struct userdata_s *ud, struct avfm_s *s)
 
 static void userdata_free(struct userdata_s *ud)
 {
-	memset(ud, 0, sizeof(*ud));
 	free(ud);
 }
 
