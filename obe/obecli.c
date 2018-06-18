@@ -1277,10 +1277,19 @@ static int show_queues(char *command, obecli_command_t *child)
     obe_filter_t *f = NULL;
     obe_queue_t *q = NULL;
 
-    q = &cli.h->enc_smoothing_queue;
-    printf("name: %s depth: %d item(s)\n", q->name, q->size);
-    q = &cli.h->mux_queue;
-    printf("name: %s depth: %d item(s)\n", q->name, q->size);
+    {
+        q = &cli.h->enc_smoothing_queue;
+        printf("name: %s depth: %d item(s)\n", q->name, q->size);
+extern void encoder_smoothing_dump(obe_t *h);
+        encoder_smoothing_dump(cli.h);
+    }
+    {
+        q = &cli.h->mux_queue;
+        printf("name: %s depth: %d item(s)\n", q->name, q->size);
+extern void mux_dump_queue(obe_t *h);
+        mux_dump_queue(cli.h);
+    }
+
     q = &cli.h->mux_smoothing_queue;
     printf("name: %s depth: %d item(s)\n", q->name, q->size);
 

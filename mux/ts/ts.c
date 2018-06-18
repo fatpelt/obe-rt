@@ -346,6 +346,33 @@ static void encoder_wait( obe_t *h, int output_stream_id )
     pthread_mutex_unlock( &encoder->queue.mutex );
 }
 
+void mux_dump_queue(obe_t *h)
+{
+    int count[3] = { 0 };
+    int size[3] = { 0 };
+
+    pthread_mutex_lock(&h->mux_queue.mutex);
+    for (int i = 0; i < h->mux_queue.size; i++) {
+        obe_coded_frame_t *cf = h->mux_queue.queue[i];
+        if (cf->type == CF_VIDEO) {
+            count[0]++;
+            size[0] += cf->len;
+        } else
+        if (cf->type == CF_AUDIO) {
+            count[1]++;
+            size[1] += cf->len;
+        } else {
+            count[2]++;
+            size[2] += cf->len;
+        }
+    }
+    pthread_mutex_unlock(&h->mux_queue.mutex);
+
+    printf("\tmux.video frames = %d totalsize %d\n", count[0], size[0]);
+    printf("\tmux.audio frames = %d totalsize %d\n", count[1], size[1]);
+    printf("\tmux.other frames = %d totalsize %d\n", count[2], size[2]);
+}
+
 int64_t initial_audio_latency = -1; /* ticks of 27MHz clock. Amount of audio (in time) we have buffered before the first video frame appeared. */
 
 void *open_muxer( void *ptr )
