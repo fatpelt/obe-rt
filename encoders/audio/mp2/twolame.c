@@ -197,6 +197,7 @@ static void *start_encoder_mp2( void *ptr )
 
         av_fifo_generic_write( fifo, output_buf, output_size, NULL );
 
+        int framesProcessed = 0;
         while( av_fifo_size( fifo ) >= frame_size )
         {
             coded_frame = new_coded_frame( encoder->output_stream_id, frame_size );
@@ -207,6 +208,23 @@ static void *start_encoder_mp2( void *ptr )
             }
             av_fifo_generic_read( fifo, coded_frame->data, frame_size, NULL );
             memcpy(&coded_frame->avfm, &avfm, sizeof(avfm));
+
+            /* In low latency configurations where the framerate (33ms) is larger than the audio interval (24ms),
+             * during audio data wrapping conditions we have to prepare two audio output frames for a single video frame.
+             * We cannot output two audio frames with the same PTS, we MUST adjust the audio output rate for the
+             * second audio frame. So, for low latency, for second frames, bump the audio pts by 24ms.
+             * The most obvious case for this fix is anything with a video framerate of > 24ms. IE. this fix
+             * is necessary for in i59.94 i50 30p, 24p etc.
+             * In no cases should we ever see more than two audio frames per video frame,
+             * for this to be untrue, a video frame would have to be atleast 48ms, which is less and 20.8fps.
+             * OBE does not support frames as low as 20.8fps.
+             */
+            framesProcessed++;
+            if (h->obe_system == OBE_SYSTEM_TYPE_LOWEST_LATENCY || h->obe_system == OBE_SYSTEM_TYPE_LOW_LATENCY) {
+                if (framesProcessed > 1 && enc_params->frames_per_pes == 1) {
+                    coded_frame->avfm.audio_pts += 648000;
+                }
+            }
 
             /* In  low latency mode, obe configures a single MP2 frame in every pes (enc_params->frames_per_pes), with a PTS interval of 24ms.
              * In norm latency mode, obe configures        N MP2 frames in every pes, with a PTS interval of N*24ms.
