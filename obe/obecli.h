@@ -24,6 +24,8 @@
 #ifndef OBECLI_H
 #define OBECLI_H
 
+#define DO_SET_VARIABLE 0
+
 void obe_cli_printf( const char *name, const char *fmt, ... );
 
 #define RETURN_IF_ERR( cond, name, ret, ... )\
@@ -152,7 +154,6 @@ static obecli_command_t set_commands[] =
     { "output", "opts outputid:[opts]",   "Set output name or output opts", set_output, NULL },
     { "outputs", "[number]",              "Set output name or output opts", set_outputs, NULL },
     { "verbose", "[number]",              "Set verbosity level", set_verbose, NULL },
-#define DO_SET_VARIABLE 0
 #if DO_SET_VARIABLE
     { "variable", "[name = arg]",         "Set variable name = arg", set_variable, NULL },
 #endif
