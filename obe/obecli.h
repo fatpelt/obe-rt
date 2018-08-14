@@ -24,6 +24,8 @@
 #ifndef OBECLI_H
 #define OBECLI_H
 
+#define DO_SET_VARIABLE 0
+
 void obe_cli_printf( const char *name, const char *fmt, ... );
 
 #define RETURN_IF_ERR( cond, name, ret, ... )\
@@ -50,6 +52,9 @@ static int set_muxer( char *command, obecli_command_t *child );
 static int set_output( char *command, obecli_command_t *child );
 static int set_outputs( char *command, obecli_command_t *child );
 static int set_verbose( char *command, obecli_command_t *child );
+#if DO_SET_VARIABLE
+static int set_variable( char *command, obecli_command_t *child );
+#endif
 
 static int show_bitdepth( char *command, obecli_command_t *child );
 static int show_decoders( char *command, obecli_command_t *child );
@@ -66,6 +71,8 @@ static int show_output_streams( char *command, obecli_command_t *child );
 
 static int start_encode( char *command, obecli_command_t *child );
 static int stop_encode( char *command, obecli_command_t *child );
+
+static int show_queues(char *command, obecli_command_t *child);
 
 struct obecli_command_t
 {
@@ -133,6 +140,7 @@ static obecli_command_t show_commands[] =
     { "muxers",   "",  "Show supported muxers",      show_muxers,   NULL },
     { "output",   "streams",  "Show output streams", show_output,   NULL },
     { "outputs",  "",  "Show supported outputs",     show_outputs,  NULL },
+    { "queues",   "",  "Show queue metrics",         show_queues,   NULL },
     { 0 }
 };
 
@@ -146,6 +154,9 @@ static obecli_command_t set_commands[] =
     { "output", "opts outputid:[opts]",   "Set output name or output opts", set_output, NULL },
     { "outputs", "[number]",              "Set output name or output opts", set_outputs, NULL },
     { "verbose", "[number]",              "Set verbosity level", set_verbose, NULL },
+#if DO_SET_VARIABLE
+    { "variable", "[name = arg]",         "Set variable name = arg", set_variable, NULL },
+#endif
     { 0 }
 };
 

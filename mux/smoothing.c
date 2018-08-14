@@ -27,11 +27,18 @@
 #include <libavutil/buffer.h>
 #include "common/common.h"
 
-static void *start_smoothing( void *ptr )
+int64_t g_mux_smoother_last_item_count = 0;
+int64_t g_mux_smoother_last_total_item_size = 0;
+int64_t g_mux_smoother_fifo_pcr_size = 0;
+int64_t g_mux_smoother_fifo_data_size = 0;
+
+#define LOCAL_DEBUG 0
+
+static void *mux_start_smoothing( void *ptr )
 {
     obe_t *h = ptr;
     int num_muxed_data = 0, buffer_complete = 0;
-    int64_t start_clock = -1, start_pcr, end_pcr, temporal_vbv_size = 0, cur_pcr;
+    int64_t start_clock = -1, start_pcr, end_pcr, temporal_vbv_size = 0, cur_pcr = 0;
     obe_muxed_data_t **muxed_data = NULL, *start_data, *end_data;
     AVFifoBuffer *fifo_data = NULL, *fifo_pcr = NULL;
     AVBufferRef **output_buffers = NULL;
@@ -95,20 +102,45 @@ static void *start_smoothing( void *ptr )
         }
 
         num_muxed_data = h->mux_smoothing_queue.size;
+        g_mux_smoother_last_item_count = num_muxed_data;
 
         /* Refill the buffer after a drop */
         pthread_mutex_lock( &h->drop_mutex );
         if( h->mux_drop )
         {
             syslog( LOG_INFO, "Mux smoothing buffer reset\n" );
+#if LOCAL_DEBUG
+            printf("[Mux-Smoother] smoothing buffer reset\n" );
+#endif
             h->mux_drop = 0;
             av_fifo_reset( fifo_data );
             av_fifo_reset( fifo_pcr );
             buffer_complete = 0;
             start_clock = -1;
+
+            /* Trash the entire input queue to avoid unwanted buildup
+             * in noisy signal environments, leading to an eventual
+             * OOM kill event.
+             */
+            for (int i = 0; i < num_muxed_data; i++) {
+#if LOCAL_DEBUG
+                printf("removing item %d of %d\n", i, num_muxed_data);
+#endif
+                obe_muxed_data_t *md = h->mux_smoothing_queue.queue[0];
+                destroy_muxed_data(md);
+                remove_from_queue_without_lock(&h->mux_smoothing_queue);
+            }
+            num_muxed_data = 0;
+            pthread_mutex_unlock(&h->mux_smoothing_queue.mutex);
+            pthread_mutex_unlock(&h->drop_mutex);
+            continue;
         }
         pthread_mutex_unlock( &h->drop_mutex );
 
+
+        /* If we don't have enough transport data to fill temporal_vbv_size ticks (27MHz) of
+         * of output, continue to wait.
+         */
         if( !buffer_complete )
         {
             start_data = h->mux_smoothing_queue.queue[0];
@@ -128,8 +160,14 @@ static void *start_smoothing( void *ptr )
             }
         }
 
-        //printf("\n mux smoothed frames %i \n", num_muxed_data );
+#if LOCAL_DEBUG
+        const char *ts = obe_ascii_datetime();
+        printf("[Mux-Smoother] smoothing %i frames @ %s\n", num_muxed_data, ts);
+        free((void *)ts);
+#endif
 
+        /* Copy all queued frames into a new allocation. Is this credible if we have a massie queue? */
+        /* Allocate an array of obe_muxed_data_t objects (muxed_data), clone the entire queue... */
         muxed_data = malloc( num_muxed_data * sizeof(*muxed_data) );
         if( !muxed_data )
         {
@@ -140,9 +178,32 @@ static void *start_smoothing( void *ptr )
         memcpy( muxed_data, h->mux_smoothing_queue.queue, num_muxed_data * sizeof(*muxed_data) );
         pthread_mutex_unlock( &h->mux_smoothing_queue.mutex );
 
+#if LOCAL_DEBUG
+        printf("[Mux-Smoother] fifo_data size %d, num_muxed_data %d\n", av_fifo_size(fifo_data), num_muxed_data);
+        printf("[Mux-Smoother] start_pcr %" PRIi64 "  end_pcr %" PRIi64 "  cur_pcr %" PRIi64 " t_vbv_size %" PRIi64 "\n",
+            start_pcr, end_pcr, cur_pcr, temporal_vbv_size);
+#endif
+
+        g_mux_smoother_fifo_pcr_size = av_fifo_size(fifo_pcr);
+        g_mux_smoother_fifo_data_size = av_fifo_size(fifo_data);
+
+        /* For every object we cloned... */
+        /* Write the transport packets to the fifo_data fifo. */
+        /* Write the associated PCR list to the fifo_pcr fifo. */
+        /* Destroy the cloned copy, and the original on the queue. */
+        g_mux_smoother_last_total_item_size = 0;
         for( int i = 0; i < num_muxed_data; i++ )
         {
-            if( av_fifo_realloc2( fifo_data, av_fifo_size( fifo_data ) + muxed_data[i]->len ) < 0 )
+            g_mux_smoother_last_total_item_size += muxed_data[i]->len;
+
+            int len = av_fifo_size( fifo_data ) + muxed_data[i]->len;
+
+#if LOCAL_DEBUG
+            if (len > 4096000 || num_muxed_data > 80)
+                printf("i = %d, len %d\n", i, len);
+#endif
+
+            if( av_fifo_realloc2( fifo_data, len ) < 0 )
             {
                 syslog( LOG_ERR, "Malloc failed\n" );
                 return NULL;
@@ -162,16 +223,25 @@ static void *start_smoothing( void *ptr )
             destroy_muxed_data( muxed_data[i] );
         }
 
+        /* Drop the entire clone f the queue allocation. */
         free( muxed_data );
         muxed_data = NULL;
         num_muxed_data = 0;
 
-        while( av_fifo_size( fifo_data ) >= TS_PACKETS_SIZE )
+        /* While we have atleast 7 transport packets in the TS packet fifo.... */
+        while(!h->mux_drop && av_fifo_size( fifo_data ) >= TS_PACKETS_SIZE )
         {
+            if (av_fifo_size( fifo_data ) > 10000000) {
+                /* We won't want this much buffered content, lose it. */
+                h->mux_drop = 1;
+                continue;
+            }
+            /* allocate a buffer, of exactly 7 PCRs followed by 7 transport packets, drain the relevant fifos. */
             output_buffers[0] = av_buffer_alloc( TS_PACKETS_SIZE + 7 * sizeof(int64_t) );
             av_fifo_generic_read( fifo_pcr, output_buffers[0]->data, 7 * sizeof(int64_t), NULL );
             av_fifo_generic_read( fifo_data, &output_buffers[0]->data[7 * sizeof(int64_t)], TS_PACKETS_SIZE, NULL );
 
+            /* Generally, we only ever have a single (IP transmitter) output, take a reference for each. */
             for( int i = 1; i < h->num_outputs; i++ )
             {
                 output_buffers[i] = av_buffer_ref( output_buffers[0] );
@@ -182,19 +252,35 @@ static void *start_smoothing( void *ptr )
                 }
             }
 
+            /* Gather the most recent PCR. */
             cur_pcr = AV_RN64( output_buffers[0]->data );
 
+            /* We never sleep after the upstream signal was lost
+             * or once enough queue data has been gathered to fill vbv ticks.
+             * We're sleeping for N 27Mhz ticks, essentially 'smoothing' the
+             * IP output (and delaying this thread).
+             */
             if( start_clock != -1 )
             {
+                struct timeval then, now;
+                gettimeofday(&then, NULL);
                 sleep_input_clock( h, cur_pcr - start_pcr + start_clock );
+                gettimeofday(&now, NULL);
+
+                int64_t duration = (now.tv_sec - then.tv_sec) * 1000000;
+                if (duration > 1000000) {
+                    printf("duration %" PRIi64 "\n", duration);
+                }
             }
 
+            /* If we have a LOS upstream, or we've just received enough to fill a vbv period.... */
             if( start_clock == -1 )
             {
                 start_clock = get_input_clock_in_mpeg_ticks( h );
                 start_pcr = cur_pcr;
             }
 
+            /* put the new output buffer(s) on all of the output interfaces. Typically only one. */
             for( int i = 0; i < h->num_outputs; i++ )
             {
                 if( add_to_queue( &h->outputs[i]->queue, output_buffers[i] ) < 0 )
@@ -211,4 +297,4 @@ static void *start_smoothing( void *ptr )
     return NULL;
 }
 
-const obe_smoothing_func_t mux_smoothing = { start_smoothing };
+const obe_smoothing_func_t mux_smoothing = { mux_start_smoothing };

@@ -27,6 +27,7 @@
 #include <math.h>
 #include <assert.h>
 #include <getopt.h>
+#include <include/DeckLinkAPIVersion.h>
 
 #include <signal.h>
 #define _GNU_SOURCE
@@ -669,6 +670,11 @@ static int set_stream( char *command, obecli_command_t *child )
 
             if( input_stream->stream_type == STREAM_TYPE_VIDEO )
             {
+                if (audio_offset)
+                    cli.output_streams[output_stream_id].audio_offset_ms = atoi(audio_offset);
+                else
+                    cli.output_streams[output_stream_id].audio_offset_ms = 0;
+
                 x264_param_t *avc_param = &cli.output_streams[output_stream_id].avc_param;
 
                 FAIL_IF_ERROR(preset_name && (check_enum_value( preset_name, preset_names) < 0),
@@ -1033,6 +1039,97 @@ static int set_outputs( char *command, obecli_command_t *child )
     return 0;
 }
 
+#if DO_SET_VARIABLE
+/* Case 1 */
+extern int g_decklink_fake_lost_payload;
+extern time_t g_decklink_fake_lost_payload_time;
+
+/* Case 2 */
+extern int g_decklink_fake_every_other_frame_lose_audio_payload;
+extern time_t g_decklink_fake_every_other_frame_lose_audio_payload_time;
+
+/* Case 4 audio/video clocks */
+extern int64_t cur_pts; /* audio clock */
+extern int64_t cpb_removal_time; /* Last video frame clock */
+
+extern int64_t ac3_offset_ms;
+
+/* Mux */
+extern int64_t initial_audio_latency;
+
+/* Mux Smoother */
+extern int64_t g_mux_smoother_last_item_count;
+extern int64_t g_mux_smoother_last_total_item_size;
+extern int64_t g_mux_smoother_fifo_pcr_size;
+extern int64_t g_mux_smoother_fifo_data_size;
+
+void display_variables()
+{
+    printf("sdi_input.fake_60sec_lost_payload = %d [%s]\n", g_decklink_fake_lost_payload,
+        g_decklink_fake_lost_payload == 0 ? "disabled" : "enabled");
+    printf("sdi_input.fake_every_other_frame_lose_audio_payload = %d [%s]\n", g_decklink_fake_every_other_frame_lose_audio_payload,
+        g_decklink_fake_every_other_frame_lose_audio_payload == 0 ? "disabled" : "enabled");
+
+    printf("audio_encoder.ac3_offset_ms = %" PRIi64 "\n", ac3_offset_ms);
+    printf("audio_encoder.last_pts = %" PRIi64 "\n", cur_pts);
+    printf("video_encoder.last_pts = %" PRIi64 "\n", cpb_removal_time);
+    printf("v - a                  = %" PRIi64 "  %" PRIi64 "(ms)\n", cpb_removal_time - cur_pts,
+        (cpb_removal_time - cur_pts) / 27000);
+    printf("a - v                  = %" PRIi64 "  %" PRIi64 "(ms)\n", cur_pts - cpb_removal_time,
+        (cur_pts - cpb_removal_time) / 27000);
+
+    printf("ts_mux.initial_audio_latency  = %" PRIi64 "\n", initial_audio_latency);
+    printf("mux_smoother.last_item_count  = %" PRIi64 "\n",
+        g_mux_smoother_last_item_count);
+    printf("mux_smoother.last_total_item_size  = %" PRIi64 " (bytes)\n",
+        g_mux_smoother_last_total_item_size);
+    printf("mux_smoother.fifo_pcr_size         = %" PRIi64 " (bytes)\n",
+        g_mux_smoother_fifo_pcr_size);
+    printf("mux_smoother.fifo_data_size        = %" PRIi64 " (bytes)\n",
+        g_mux_smoother_fifo_data_size);
+
+}
+
+static int set_variable(char *command, obecli_command_t *child)
+{
+    int64_t val = 0;
+    char var[128];
+
+    if (!strlen(command)) {
+        /* Missing arg, display the current value. */
+        display_variables();
+        return 0;
+    }
+
+    if (sscanf(command, "%s = %" PRIi64, &var[0], &val) != 2) {
+        printf("illegal variable name.\n");
+        return -1;
+    }
+
+    if (strcasecmp(var, "sdi_input.fake_60sec_lost_payload") == 0) {
+        printf("setting %s to %" PRIi64 "\n", var, val);
+        g_decklink_fake_lost_payload = val;
+        if (val == 0)
+            g_decklink_fake_lost_payload_time = 0;
+    } else
+    if (strcasecmp(var, "sdi_input.fake_every_other_frame_lose_audio_payload") == 0) {
+        g_decklink_fake_every_other_frame_lose_audio_payload = val;
+        g_decklink_fake_every_other_frame_lose_audio_payload_time = 0;
+    } else
+    if (strcasecmp(var, "audio_encoder.ac3_offset_ms") == 0) {
+        ac3_offset_ms = val;
+    } else {
+        printf("illegal variable name.\n");
+        return -1;
+    }
+
+    //if (sscanf(command, "0x%x", &bitmask) != 1)
+    //    return -1;
+
+    return 0;
+}
+#endif
+
 static void display_verbose()
 {
     uint32_t bm = cli.h->verbose_bitmask;
@@ -1046,6 +1143,8 @@ static void display_verbose()
 
     /* MUXER */
     DISPLAY_VERBOSE_MASK(bm, MUX__DQ_HEXDUMP);
+    DISPLAY_VERBOSE_MASK(bm, MUX__PTS_REPORT_TIMES);
+    DISPLAY_VERBOSE_MASK(bm, MUX__REPORT_Q);
 }
 
 static int set_verbose(char *command, obecli_command_t *child)
@@ -1129,6 +1228,43 @@ static int show_decoders( char *command, obecli_command_t *child )
     {
         if( strcmp( format_names[i].decoder_name, "N/A" ) )
             printf( "       %-*s %-*s - %s \n", 7, format_names[i].format_name, 22, format_names[i].long_name, format_names[i].decoder_name );
+    }
+
+    return 0;
+}
+
+static int show_queues(char *command, obecli_command_t *child)
+{
+    printf( "Global queues:\n" );
+
+    obe_filter_t *f = NULL;
+    obe_queue_t *q = NULL;
+
+    q = &cli.h->enc_smoothing_queue;
+    printf("name: %s depth: %d item(s)\n", q->name, q->size);
+    q = &cli.h->mux_queue;
+    printf("name: %s depth: %d item(s)\n", q->name, q->size);
+    q = &cli.h->mux_smoothing_queue;
+    printf("name: %s depth: %d item(s)\n", q->name, q->size);
+
+    printf( "Filter queues:\n" );
+    for (int i = 0; i < cli.h->num_filters; i++) {
+        f = cli.h->filters[i];
+        printf("name: %s depth: %d item(s)\n", f->queue.name, f->queue.size);
+    }
+
+    printf( "Output queues:\n" );
+    for (int i = 0; i < cli.h->num_outputs; i++) {
+        q = &cli.h->outputs[i]->queue;
+        printf("name: %s depth: %d item(s)\n", q->name, q->size);
+    }
+
+    printf( "Encoder queues:\n" );
+    for( int i = 0; i < cli.h->num_output_streams; i++ ) {
+        if (cli.h->output_streams[i].stream_action == STREAM_ENCODE ) {
+            q = &cli.h->encoders[i]->queue;
+            printf("name: %s depth: %d item(s)\n", q->name, q->size);
+        }
     }
 
     return 0;
@@ -1636,8 +1772,9 @@ static void _usage(const char *prog, int exitcode)
 {
     printf("\nOpen Broadcast Encoder command line interface.\n");
     printf("Including Kernel Labs enhancements.\n");
-    printf("Version 1.6 (" GIT_VERSION ")\n");
+    printf("Version 1.8 (" GIT_VERSION ")\n");
     printf("x264 build#%d (%dbit support)\n", X264_BUILD, X264_BIT_DEPTH);
+    printf("Decklink SDK %s\n", BLACKMAGIC_DECKLINK_API_VERSION_STRING);
     printf("\n");
 
     if (exitcode) {

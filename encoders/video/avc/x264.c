@@ -25,12 +25,9 @@
 #include "encoders/video/video.h"
 #include <libavutil/mathematics.h>
 
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-#include <libklmonitoring/klmonitoring.h>
-static struct kl_histogram frame_encode;
-static struct kl_histogram gop_encode;
-static int histogram_dump = 0;
-#endif
+#define DEBUG_CODEC_TIMING 0
+
+int64_t cpb_removal_time = 0;
 
 static void x264_logger( void *p_unused, int i_level, const char *psz_fmt, va_list arg )
 {
@@ -123,13 +120,6 @@ printf("pic->img.i_csp = %d [%s] bits = %d\n",
 
 static void *start_encoder( void *ptr )
 {
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-    kl_histogram_reset(&frame_encode, "video frame encode", KL_BUCKET_VIDEO);
-    kl_histogram_reset(&gop_encode, "GOP compression time", KL_BUCKET_VIDEO);
-    //kl_histogram_rrd_gauge_enable(&gop_encode, "/tmp/gopcompression.rrd", "X264 GOP Compression");
-    kl_histogram_cumulative_initialize(&gop_encode);
-#endif
-
     obe_vid_enc_params_t *enc_params = ptr;
     obe_t *h = enc_params->h;
     obe_encoder_t *encoder = enc_params->encoder;
@@ -138,10 +128,14 @@ static void *start_encoder( void *ptr )
     x264_nal_t *nal;
     int i_nal, frame_size = 0;
     int64_t pts = 0, arrival_time = 0, frame_duration, buffer_duration;
-    int64_t *pts2;
+
+    struct avfm_s *avfm;
     float buffer_fill;
     obe_raw_frame_t *raw_frame;
     obe_coded_frame_t *coded_frame;
+    int64_t last_raw_frame_pts = 0;
+    int64_t current_raw_frame_pts = 0;
+    int upstream_signal_lost = 0;
 
     /* TODO: check for width, height changes */
 
@@ -198,10 +192,12 @@ static void *start_encoder( void *ptr )
             break;
         }
 
+        upstream_signal_lost = 0;
+
         /* Reset the speedcontrol buffer if the source has dropped frames. Otherwise speedcontrol
          * stays in an underflow state and is locked to the fastest preset */
         pthread_mutex_lock( &h->drop_mutex );
-        if( h->encoder_drop )
+        if( h->video_encoder_drop )
         {
             pthread_mutex_lock( &h->enc_smoothing_queue.mutex );
             h->enc_smoothing_buffer_complete = 0;
@@ -210,13 +206,32 @@ static void *start_encoder( void *ptr )
 #if X264_BUILD < 148
             x264_speedcontrol_sync( s, enc_params->avc_param.sc.i_buffer_size, enc_params->avc_param.sc.f_buffer_init, 0 );
 #endif
-            h->encoder_drop = 0;
+            h->video_encoder_drop = 0;
+            upstream_signal_lost = 1;
         }
         pthread_mutex_unlock( &h->drop_mutex );
 
         raw_frame = encoder->queue.queue[0];
         pthread_mutex_unlock( &encoder->queue.mutex );
 
+#if 0
+        static int drop_count = 0;
+        FILE *fh = fopen("/tmp/dropvideoframe.cmd", "rb");
+        if (fh) {
+            fclose(fh);
+            unlink("/tmp/dropvideoframe.cmd");
+            drop_count = 60;
+        }
+        if (drop_count-- > 0) {
+            raw_frame->release_data( raw_frame );
+            raw_frame->release_frame( raw_frame );
+            remove_from_queue( &encoder->queue );
+            const char *ts = obe_ascii_datetime();
+            fprintf(stderr, "[X264] %s -- Faking a dropped raw video frame\n", ts);
+            free((void *)ts);
+            continue;
+        }
+#endif
         /* convert obe_frame_t into x264 friendly struct */
         if( convert_obe_to_x264_pic( &pic, raw_frame ) < 0 )
         {
@@ -227,15 +242,18 @@ printf("Malloc failed\n");
 
         /* FIXME: if frames are dropped this might not be true */
         pic.i_pts = pts++;
-        pts2 = malloc( sizeof(int64_t) );
-        if( !pts2 )
-        {
-printf("Malloc failed\n");
-            syslog( LOG_ERR, "Malloc failed\n" );
+
+        current_raw_frame_pts = raw_frame->pts;
+
+        avfm = malloc(sizeof(struct avfm_s));
+        if (!avfm) {
+            printf("Malloc failed\n");
+            syslog(LOG_ERR, "Malloc failed\n");
             break;
         }
-        pts2[0] = raw_frame->pts;
-        pic.opaque = pts2;
+        memcpy(avfm, &raw_frame->avfm, sizeof(raw_frame->avfm));
+        //avfm_dump(avfm);
+        pic.opaque = avfm;
         pic.param = NULL;
 
         /* If the AFD has changed, then change the SAR. x264 will write the SAR at the next keyframe
@@ -281,40 +299,7 @@ printf("Malloc failed\n");
             pthread_mutex_unlock( &h->enc_smoothing_queue.mutex );
         }
 
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-	kl_histogram_sample_begin(&frame_encode);
-        kl_histogram_cumulative_begin(&gop_encode);
-#endif
         frame_size = x264_encoder_encode( s, &nal, &i_nal, &pic, &pic_out );
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-	kl_histogram_sample_complete(&frame_encode);
-        kl_histogram_cumulative_complete(&gop_encode);
-
-static int fc = 0;
-for (int m = 0; m < i_nal; m++) {
-	//printf("fc = %d I:%d %d\n", fc++, nal[m].i_type, nal[m].i_payload);
-        if (nal[m].i_type == NAL_SLICE) {
-           fc++;
-           /* Four MB slices per frame, and 60fps */
-           /* TODO: Warning, if the framerate is not 60fps then this calculation breaks.
-            * I've been manually adjusting it for 60 vs 30 content when testing.
-            */
-           if (fc == (enc_params->avc_param.i_threads * 60)) {
-               fc = 0;
-               kl_histogram_cumulative_finalize(&gop_encode); 
-               kl_histogram_cumulative_initialize(&gop_encode); 
-           }
-        }
-}
-
-	if (histogram_dump++ > 240) {
-		histogram_dump = 0;
-#if PRINT_HISTOGRAMS
-		kl_histogram_printf(&frame_encode);
-		kl_histogram_printf(&gop_encode);
-#endif
-	}
-#endif
 
         arrival_time = raw_frame->arrival_time;
         raw_frame->release_data( raw_frame );
@@ -337,26 +322,110 @@ for (int m = 0; m < i_nal; m++) {
                 break;
             }
             memcpy( coded_frame->data, nal[0].p_payload, frame_size );
-            coded_frame->is_video = 1;
+            coded_frame->type = CF_VIDEO;
             coded_frame->len = frame_size;
+
+            /* We've detected video frame loss that wasn't related to an upstream signal loss.
+             * ensure we pass that data to the mux.
+             */
+            if (last_raw_frame_pts && !upstream_signal_lost) {
+                //coded_frame->discontinuity_hz = (current_raw_frame_pts - last_raw_frame_pts) - frame_duration;
+            }
+            last_raw_frame_pts = current_raw_frame_pts;
+
 #if X264_BUILD < 148
             coded_frame->cpb_initial_arrival_time = pic_out.hrd_timing.cpb_initial_arrival_time;
             coded_frame->cpb_final_arrival_time = pic_out.hrd_timing.cpb_final_arrival_time;
             coded_frame->real_dts = pic_out.hrd_timing.cpb_removal_time;
             coded_frame->real_pts = pic_out.hrd_timing.dpb_output_time;
+
+            cpb_removal_time = pic_out.hrd_timing.cpb_removal_time;
+
+            avfm = pic_out.opaque;
+            memcpy(&coded_frame->avfm, avfm, sizeof(*avfm));
+            coded_frame->pts = avfm->audio_pts;
+
+#if DEBUG_CODEC_TIMING
+            {
+                static int64_t last_real_pts = 0;
+                static int64_t last_real_dts = 0;
+
+                printf(" codec: real_pts %12" PRIi64 " ( %12" PRIi64 " )  real_dts %12" PRIi64 " ( %12" PRIi64 " )  iat %12" PRIi64 "  fat %12" PRIi64 "  audio_pts %10" PRIi64" \n",
+                    coded_frame->real_pts,
+                    coded_frame->real_pts - last_real_pts,
+                    coded_frame->real_dts,
+                    coded_frame->real_dts - last_real_dts,
+                    coded_frame->cpb_initial_arrival_time,
+                    coded_frame->cpb_final_arrival_time,
+                    coded_frame->pts);
+
+                last_real_pts = coded_frame->real_pts;
+                last_real_dts = coded_frame->real_dts;
+            }
+#endif
 #else
             coded_frame->cpb_initial_arrival_time = pic_out.hrd_timing.cpb_initial_arrival_time * 27000000.0;
             coded_frame->cpb_final_arrival_time = pic_out.hrd_timing.cpb_final_arrival_time * 27000000.0;
             coded_frame->real_dts = (pic_out.hrd_timing.cpb_removal_time * 27000000.0);
             coded_frame->real_pts = (pic_out.hrd_timing.dpb_output_time  * 27000000.0);
+#endif
+
+            /* The audio and video clocks jump with different intervals when the cable
+             * is disconnected, suggestedint a BM firmware bug.
+             * We'll use the audio clock regardless, for both audio and video compressors.
+             */
+            int64_t new_dts  = avfm->audio_pts + 24299700 - abs(coded_frame->real_dts - coded_frame->real_pts) + (2 * frame_duration);
+
+            /* We need to userstand, for this temporal frame, how much it varies from the dts. */
+            int64_t pts_diff = coded_frame->real_dts - coded_frame->real_pts;
+
+            /* Construct a new PTS based on the hardware DTS and the PTS offset difference. */
+            int64_t new_pts  = new_dts - pts_diff;
+
+            coded_frame->real_dts = new_dts;
+            coded_frame->real_pts = new_pts;
 #if 0
-            printf("H264: real_pts:%" PRIi64 " real_dts:%" PRIi64 " (%.3f %.3f)\n",
-                coded_frame->real_pts, coded_frame->real_dts,
-                pic_out.hrd_timing.dpb_output_time, pic_out.hrd_timing.cpb_removal_time);
+            coded_frame->cpb_initial_arrival_time = new_dts;
+            coded_frame->cpb_final_arrival_time   = new_dts + abs(pic_out.hrd_timing.cpb_final_arrival_time - pic_out.hrd_timing.cpb_final_arrival_time);
+#else
+
+            static int64_t last_dts = 0;
+            static int64_t dts_diff_accum = 0;
+            int64_t dts_diff = 0;
+            if (last_dts > 0) {
+                dts_diff = coded_frame->real_dts - last_dts - (1 * frame_duration);
+                dts_diff_accum += dts_diff;
+            }
+            last_dts = coded_frame->real_dts;
+
+            int64_t ft = pic_out.hrd_timing.cpb_final_arrival_time;
+            int64_t it = pic_out.hrd_timing.cpb_initial_arrival_time;
+            int64_t fit = abs(ft - it);
+
+            coded_frame->cpb_initial_arrival_time += dts_diff_accum;
+
+            coded_frame->cpb_final_arrival_time = coded_frame->cpb_initial_arrival_time + fit;
 #endif
+
+#if DEBUG_CODEC_TIMING
+            {
+                static int64_t last_real_pts = 0;
+                static int64_t last_real_dts = 0;
+
+                printf("adjust: real_pts %12" PRIi64 " ( %12" PRIi64 " )  real_dts %12" PRIi64 " ( %12" PRIi64 " )  iat %12" PRIi64 "  fat %12" PRIi64 "  audio_pts %10" PRIi64" \n",
+                    coded_frame->real_pts,
+                    coded_frame->real_pts - last_real_pts,
+                    coded_frame->real_dts,
+                    coded_frame->real_dts - last_real_dts,
+                    coded_frame->cpb_initial_arrival_time,
+                    coded_frame->cpb_final_arrival_time,
+                    coded_frame->pts);
+
+                last_real_pts = coded_frame->real_pts;
+                last_real_dts = coded_frame->real_dts;
+            }
 #endif
-            pts2 = pic_out.opaque;
-            coded_frame->pts = pts2[0];
+            cpb_removal_time = coded_frame->real_pts; /* Only used for manually eyeballing the video output clock. */
             coded_frame->random_access = pic_out.b_keyframe;
             coded_frame->priority = IS_X264_TYPE_I( pic_out.i_type );
             free( pic_out.opaque );

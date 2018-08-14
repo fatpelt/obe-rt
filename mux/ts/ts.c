@@ -21,6 +21,261 @@
  *
  *****************************************************************************/
 
+/* How can the mux "fail", and what error conditions does it have to deal with?
+ * By fail we mean, become confused and fail to adapt in the case of lost video
+ * or lost audio frames.
+ *
+ * When the mux starts, its input queue is empty. This queue all any audio or
+ * video frames from the upstream compression codecs.
+ * Upstream 'encoders' place coded_frame structs 'frames' into the input queue.
+ *
+ * Upstream encoders run at different processing speeds so frames that enter
+ * the mux queue are temporaly unordered, and can arrive in non-realtime
+ * conditions. Eg 500 ms or more video video, where as AC3 frames arrive within
+ * 35ms of being received from the SDI card. Almost no latency for AC3.
+ *
+ * So that's a fun design challenge, temporaly unordered frame types.
+ * For audio, frames arrive ordered temporaly, both A52/AC3 and MP2.
+ * For video, frames arrive out of order, and can be ordered by inspecting
+ * the coded_frame->real_dts field (order asencing). As a nitpick detail,
+ * video frames don't HAVE to arrive temporaly unordered, it does depend
+ * on the configuration of the compressor. Lets assume however that
+ * OBE always generates unordered frames (h264 slices).
+ *
+ * The important (timing related) 'struct coded_frame' vars for video are:
+ * real_dts
+ *
+ * Important coded_frame timing vars for any audio is are:
+ * pts
+ *
+ * 1. One role of the muxes' is to process a queue of frames, deal with any
+ *    time related ordering problems caused by the video DTS.
+ *
+ * Because the input queue has out of ourder PTS/DTS frames, and those
+ * frames arrive for video and audio and significantly different rates,
+ * the mux may need to 'stall' processing, waiting for its preferred
+ * type of frame to arrive. This preferred type of frame is then used
+ * to syncronize everything else to.
+ *
+ * 2. The muxes' preferred type of coded_frame is CF_VIDEO. Each
+ *    iterations over the work queue will involve searching for one
+ *    or more CF_VIDEO frames. It may not find any, but it almost
+ *    certainly will find non-video frames.
+ *    If no video frames every arrive, no audio is ever processed, without
+ *    video the mux slowly allos all system memory to be exhausted.
+ *
+ * 3. The mux inspects the queue and waits for a video frame
+ *    to arrive. If this is the first video
+ *    frame ever processed, it measures how much audio it already has
+ *    queued*. A poor assumption is made that audio pts exceeds
+ *    video dts, and this assumption is used to remove any audio
+ *    frames from the queue earlier than the first video frame.
+ *    The 'poor' statement here referrs to the fact that other
+ *    audio codecs (unlikely but possible) could take longer
+ *    to arrive than video..... That's completely possible but
+ *    generally never happens with MP2 or A52/AC3 during testing.
+ *
+ *    How can this actually happen?
+ *    Video frames take much longer to compress than audio frames.
+ *    So if the SDI card accepts 60 frames of audio and video,
+ *    the majority of the audio frames will appear on the mux
+ *    queue long before the first video frame arrives.
+ *    The mux makes as assumption that everything with a PTS
+ *    less then the first video DTS should be deleted. It does this.
+ *
+ *    Additionally, when we've processed the very first video frame
+ *    then any 'early' audio has been removed, we measure the total
+ *    amount of audio in the queue (initial_audio_latency) in 
+ *    units of HZ. We'll use this value later when attempting to
+ *    compensate for a/v drift through the audio_drift_correction bias.
+ *
+ * 4. The main loop of the mux can be described as follows:
+ *    while(1) {
+ *       find a CF_VIDEO frame from the queue or wait until one arrives.
+ *       If its the very first frame, measure a few things that help establish
+ *       an initial audio pts vs video dts offset.
+ *       
+ *       Prepare an output 'frames' array.
+ *       for all frames in the mux queue {
+ *         measure a few things, don't change anything, just gather data. We've
+ *         added this because its useful to check this on demand.
+ *         Importantly, increment audio_drift_correction based on a heuristic
+ *         that measures the last video frame vs the last audio frames, and measures
+ *         drifting between their clocks to measure loss. No wall-times are used,
+ *         only stream time. This means the corrections survive less-than-realtime
+ *         behavioural problems as a result of uncontrolled system load.
+ *         The way we do this is different for normal latency vs low latency, but
+ *         only slightly.
+ *
+ *         We measure a few other things to..... more on that later.
+ *       }
+ *
+ *       for all frames in the queue (again) {
+ *          if next frame is video
+ *            Insert this video frame into 'frames', and use the exact PTS/DTS timing that came from the
+ *            video compression codec:
+ *              frames[num_frames].cpb_initial_arrival_time = coded_frame->cpb_initial_arrival_time;
+ *              frames[num_frames].cpb_final_arrival_time = coded_frame->cpb_final_arrival_time;
+ *              frames[num_frames].dts = coded_frame->real_dts;
+ *              frames[num_frames].pts = coded_frame->real_pts;
+ *              Noticed that no games are played with timing, regardless of the fact that
+ *              the PTS or DTS could (in theory) be discontinuious.
+ *              In fact, they're never discontinious, but that's a side effect of the upstream
+ *              codec (x264) hiding data loss, and actually more of a hassle than a nice design win.
+ *           if next frame is audio
+ *            Insert this frame into 'frames', and monkey with the PTS/DTS timing.
+ *              frames[num_frames].dts = coded_frame->pts - first_video_pts + first_video_real_pts;
+ *              frames[num_frames].pts = coded_frame->pts - first_video_pts + first_video_real_pts;
+ *              Notice above that the mux rebases the dts of the 'frames' output frame, based on the
+ *              current audio pts, minus that initial 'virst_video_pts' and 'first_video_real_pts'
+ *              values we measured during mux start? Yeah. This is the (item#3 above) calculated offsets
+ *              that were done during first-video-frame-arrival.
+ *
+ *              What this really does is to reduce the audio PTS/DTS to match that of the current video frame,
+ *              by subtracting (essentially) a fixed runtime offset. The offset value is usually one value
+ *              for normal latency and a smaller value for low latency.
+ *
+ *              Let me explain.... Imagine a whackey world where time video frames are measured in minutes....
+ *              stick with me....
+ *              Eg. if the mux started processing at 1300hrs, and the first video frame arrived at 1305hrs
+ *              then most likely the mux queue also contains audio frames at 1301, 1302, 1003.
+ *              The video frame will be stamped as 1300hrs. We play some games to ensure that the audio
+ *              frame with time 1301 now reads 1305 onwards.... so the video and audio fames both are 1305hrs.
+ *              This continues for all audio frames, forever. Yay. Syncronization (usually).
+ *
+ *              In a perfectly clean SDI signal world, this model never breaks. We don't live in that world.
+ *
+ *              Occasionally, AC3 frames upstream of the mux get lost (for any number of reasons).
+ *              Due to the way the upstream audio encoder filters are written, this means their PTS
+ *              values (which increment by a fixed interval). When they don't seem to arrive in the mux as frequently
+ *              as they normally do. IE, we lost audio.
+ *
+ *              The monkeying with the audio PTS/DTS that we mentioned above breaks badly, because it
+ *              assumes audio and video frames are never lost. One of the things we've added to this
+ *              section of code, is a compensation for audio_drift.
+ *
+ *              frames[num_frames].pts += audio_drift_correction;
+ *              frames[num_frames].dts += audio_drift_correction;
+ *
+ *              I won't mention how we measure audio drift yet, lets just accept that when we bend the
+ *              audio PTS/DTS time (for ac3 or MP2 by the way), we taking into the consideration that
+ *              we probably have a really good video frame for 1300hrs, but the associated audio frame went missing
+ *              and thus the audio frame for 1301 should NOT be improperly given the 1300 timestamp. Essentially,
+ *              we create a gap in the audio PTS/DTS clock to reflect loss. The audio clock 'skips
+ *              a beat'. Its works great.
+ *
+ *              Lastly, we convert the 27MHz DTS/PTS clocks into 90KHz clocks, which libmpegts prefers.
+ *
+ *       }
+ *       Elementary codec stream (ES) is then convert to TS by pushing 'frames' to libmpegts.
+ *       libmpegts returns a new ISO13818 transport buffer to us.
+ *       Send these TS packets downstream.
+ *       Remove / dealloc all of the mux queue frames we've processed, and any 'frames' array entries.
+ *    }
+ *
+ * 5. The end goal of the mux is to prepare an array of 'ts_frame_t'
+ *    called 'frames', which uses 90KHz clock. We mentioned this briefly a few moments ago (See #4).
+ *    ts_frame_t structs contains elementary stream (codec) data and presentation/display timing.
+ *    It passes this to libmpegts (via ts_write_frames()) inorder to have elementary streams
+ *    and timing converted into full ISO13818 packets, including PAT, PMT, PES with PTS/DTS.
+ *    Properly timed for an external decoder later process. Side effect, 10 seconds of 90KHz
+ *    adjustment timing is also added to the PTS/DTS audio/video times by libmpegts (unknown reason).
+ *    Once ES to TS conversion is done and the function returns, the TS packets
+ *    are handed off by the muxer to the downstream mux smoother,
+ *    Nitpick: I'm skimping because I haven't mentioned that the mux smoother want's PCR's too, provided by the
+ *    limpegts, and they're also returned along with TS packets. Its not important to the mux
+ *    drift/calculation processing.
+ *
+ * End that's basically how the mux works, mostly.
+ *
+ * History
+ * One of the things we fixed early in the mux process was dealing with audio loss, this is - 
+ * the mux queue missing frames of audio. How can this happen?
+ * In the case of MP2, the SDI card could (in theory - although we fixed it*) deliver
+ * very short audio payload. This doesn't provide enough payload to the audio compressor
+ * so the resulting output PTS on the compressed audio is less than expected. (its running behind).
+ * "The SDI card 'shorted' the audio compressor by N audio frames upstream", the audio compressor
+ * is blind to this, and as a result output time for the audio compressor advanced more
+ * slowly, drift is created compared to realtime and compared to a video stream which
+ * (in principle) suffered no loss.
+ *
+ * *When I say we fixed it. We actively discard video frames during SDI capture if the
+ * associated audio wasn't of the appropriate length. We 'short' the video compressor by the
+ * same amount (a single frame), and the audio compressor by exactly the same amount, and the resuting output
+ * PTS/DTS clocks from each compressor remain perfectly in sync. This works exceptionally well.
+ *
+ * OK, and what about AC3 drift issues?
+ * Interesting problem. AC3 frame payload is received via SDI at different intervals to regular
+ * video frames or regular PCM (mp2). So we can't just throw away a video frame and AC3 frame
+ * to keep the clocks inalignment. To make matters worse, a fully formed AC3 frame is exactly
+ * 32ms long. So for every two 720p60 video frames SDI receives, on average OBE "just about"
+ * received enough AC3, but likely not.
+ *
+ * AC3 loss occurs because the AC3 payload itself was interrupted upstream of the mux, usually
+ * it's improperly formed and doesn't validate against CRC checks. The ac3bitstream filter
+ * intentionally throws it away. The ac3bitstream filter is designed to increment its timing
+ * output PTS/DTS by a fixed 32ms for every frame it outputs. So, if the ac3bitstream filter 
+ * is rejecting a frame for validation purposes then it has to ensure it keeps the clock moving
+ * regardless. This works well for intermittent or sustained minor SDI noise conditions but doesn't work
+ * at all when the upstream device stops sending ac3 at all.
+ *
+ * So AC3 loss is when a frame doesn't validate and we throw it away.
+ *   In this case we simply increment the output PTS/DTS regardless in order to keep accurate time.
+ *
+ * Additionally:
+ * AC3 loss happens when the upstream device stops sending it, then later resumes.
+ *   "Its shorting the OBE AC3 audio pipeline, but NOT shorting the video pipeline."
+ *   In this case, we tried fixing this in the ac3bitstream filter itself, but ultimately
+ *   the right fix was to push the problem into the mux, where other timing changes are being
+ *   made..... Lets keep all the time adjustment code in one place, so its easier to maintain and
+ *   improve, and hopefully describe.
+ *   So what did we do to solve this, and how did we test it?
+ *   a) In the main mux loop, we monitor the last video frame pts vs the last audio pts and
+ *      if they drift too far from each other then we make an adjustment to audio_drift_correction. The
+ *      calculation is slightly different for normal vs low latency, its a minor detail.
+ *      This technique works really well.
+ *      To test it, we trigger a debug feature in the SDI input to 'wipe' all audio data
+ *      from a series of frames, watch time bend, then watch it auto-correct itself.
+ *
+ * Video loss is a real thing too!
+ * The last thing we adjusted the mux for was video loss.
+ * How on earth can we lose video?
+ * We can:
+ * a) Throw it away intensionally (see above, short audio frames, to keep MP2 and video time aligned).
+ * b) We can have some 'unusual' circumstances from the SDI card when audio payload is received but
+ *    no video payload is received.
+ *    We fixed this by discarding any frames that contain video or audio, but not both. This works well.
+ * c) Lastly, we can trigger video loss using a debug technique, were we simply discard N raw video frames
+ *    from the video compressor raw video input queue.
+ *    The result is that the video compressor doesn't see the loss, and raw video frames A B C D E get
+ *    timestamp 1301 to 1305..... but frames F G H are lost, so frames I J K get timestamps incorrect
+ *    1306, 1307, 1308 timestamps..... In order words, the video compressor lost time with respect to audio.
+ *    This is passed to the mux and the mux has to deal with that condition.
+ *    I've never seen this actually occur, but testing in extremely noisy conditions suggests that it
+ *    is occuring and has been measured. How did we fix it?
+ *    Using a technique similar to audio_drift_correction, the video compressor filter was adjusted to
+ *    measured discrepencies in the hard stream time on each raw video frame, it passes this to
+ *    the mux via a discontinuity var we've added.
+ *    The mux notices the discontinuity then compensates for that gap by adjusting the
+ *    video_drift_correction bias, and thus all future video frames and adjusted routinely.
+ *              coded_frame->cpb_initial_arrival_time += video_drift_correction;
+ *              coded_frame->cpb_final_arrival_time += video_drift_correction;
+ *              coded_frame->real_dts += video_drift_correction;
+ *              coded_frame->real_pts += video_drift_correction;
+ *
+ *    We can notice the gap by monitoring the coded_frame->pts field, which is a reflection of
+ *    time as provided by the capture hardware itself. The easy way to do this, because of the temporal
+ *    alignment problem in the mux, is to do this upstream in the video compressor. If the video compressor
+ *    notices the input PTS time from the audio queue is non-contigious, we measure the amount of time lost
+ *    and populate a 'discontinuity' field in the coded_frame struct.
+ *    The mux the observes this discontinuity and acts accordingly, adjusting the video_drift_correction field.
+ *
+ * Closing thoughts:
+ * We generally don't need two biases. We should be maintaining a single bias with respect to video.
+ * Meh, perhaps a subject for another day. Two biases limits the amount of data we may need to
+ * discard from the input queue..... and that's a troublesome though.
+ *
+ */
 #include "common/common.h"
 #include "mux/mux.h"
 #include <libmpegts.h>
@@ -85,6 +340,8 @@ static void encoder_wait( obe_t *h, int output_stream_id )
         pthread_cond_wait( &encoder->queue.in_cv, &encoder->queue.mutex );
     pthread_mutex_unlock( &encoder->queue.mutex );
 }
+
+int64_t initial_audio_latency = -1; /* ticks of 27MHz clock. Amount of audio (in time) we have buffered before the first video frame appeared. */
 
 void *open_muxer( void *ptr )
 {
@@ -399,12 +656,18 @@ void *open_muxer( void *ptr )
             goto end;
         }
 
+        /* We need to find the audio frame immediately prior to the first video frame,
+         * if such a thing exists..... We'll use this in calculating how much queue audio
+         * data (by pts) we have, so when AC3 drifts we have a helper to understand our orignal
+         * stream offset.
+         */
+        int64_t current_audio_pts = 0;
         while( !video_found )
         {
             for( int i = 0; i < h->mux_queue.size; i++ )
             {
                 coded_frame = h->mux_queue.queue[i];
-                if( coded_frame->is_video )
+                if (coded_frame->type == CF_VIDEO)
                 {
                     video_found = 1;
                     video_dts = coded_frame->real_dts;
@@ -417,7 +680,25 @@ void *open_muxer( void *ptr )
                         remove_early_frames( h, first_video_pts );
                     }
                     break;
+                } else {
+                    current_audio_pts = coded_frame->pts;
                 }
+            }
+            if (video_found) {
+                    /* In AC3 passthorugh and normal latency, we queue 40-50
+                     * frames of audio data before a video frame arrives. 
+                     * If the upstream device stops sending audio we burn though
+                     * these frames then stop outputting audio.
+                     * In order to correctly adjust the audio clode when frames
+                     * arrive sometime in the future, we need to understad our
+                     * original and initial audio offset, else we'll incorrectly
+                     * calculate a new pts offset and we'll have a/v sync issues.
+                     * initial_audio_latency mresure how much data (in time)
+                     * we always need to keep the PTS clock ahead by.
+                     */
+                    if (initial_audio_latency == -1) {
+                        initial_audio_latency = current_audio_pts;
+                    }
             }
 
             if( !video_found )
@@ -440,26 +721,33 @@ void *open_muxer( void *ptr )
 
         //printf("\n START - queuelen %i \n", h->mux_queue.size);
 
+	/* Prpare the 'frames' array with any audio and video frames.
+	 * If we detect any video frames with discontinuities, adjust out video_drift_correction.
+	 */
         num_frames = 0;
-        for( int i = 0; i < h->mux_queue.size; i++ )
+        for (int i = 0; i < h->mux_queue.size; i++)
         {
             coded_frame = h->mux_queue.queue[i];
 
             if (h->verbose_bitmask & MUX__DQ_HEXDUMP) {
-                printf("coded_frame: output_stream_id = %d, is_video = %d, len = %6d -- ",
-                    coded_frame->output_stream_id, coded_frame->is_video, coded_frame->len);
-                    for (int x = 0; x < coded_frame->len; x++) {
-                        printf("%02x ", *(coded_frame->data + x));
-                        if (x > 8)
-                            break;
-                    }
+                printf("coded_frame: output_stream_id = %d, type = %d, len = %6d -- ",
+                    coded_frame->output_stream_id, coded_frame->type, coded_frame->len);
+                for (int x = 0; x < coded_frame->len; x++) {
+                    printf("%02x ", *(coded_frame->data + x));
+                    if (x > 8)
+                        break;
+                }
                 printf("\n");
             }
 
             output_stream = get_output_mux_stream( mux_params, coded_frame->output_stream_id );
             // FIXME name
+            /* Rescaled_dts only applies to non-video frames, in the queue prior to related video frames,
+             * such as when running in normal latency and AC3 bitstream, were 50 or so AC3 frames arrive
+             * before the first video frame.
+             */
             int64_t rescaled_dts = coded_frame->pts - first_video_pts + first_video_real_pts;
-            if( coded_frame->is_video )
+            if (coded_frame->type == CF_VIDEO)
                 rescaled_dts = coded_frame->real_dts;
 
             //printf("\n stream-id %i ours: %"PRIi64" \n", coded_frame->output_stream_id, coded_frame->pts );
@@ -470,7 +758,7 @@ void *open_muxer( void *ptr )
                 frames[num_frames].size = coded_frame->len;
                 frames[num_frames].data = coded_frame->data;
                 frames[num_frames].pid = output_stream->ts_opts.pid;
-                if( coded_frame->is_video )
+                if (coded_frame->type == CF_VIDEO)
                 {
                     frames[num_frames].cpb_initial_arrival_time = coded_frame->cpb_initial_arrival_time;
                     frames[num_frames].cpb_final_arrival_time = coded_frame->cpb_final_arrival_time;
@@ -479,6 +767,7 @@ void *open_muxer( void *ptr )
                 }
                 else
                 {
+                    /* This has always applied equally to audio or 'other' non video frames. */
                     frames[num_frames].dts = coded_frame->pts - first_video_pts + first_video_real_pts;
                     frames[num_frames].pts = coded_frame->pts - first_video_pts + first_video_real_pts;
                 }
@@ -490,6 +779,9 @@ void *open_muxer( void *ptr )
                 frames[num_frames].random_access = coded_frame->random_access;
                 frames[num_frames].priority = coded_frame->priority;
                 num_frames++;
+            } else {
+                /* Skipping this frame, we're not ready to mux it yet, its in the future. */
+                /* This happens a lot with AC3 / bitstream frames in normal latency mode. */
             }
         }
 

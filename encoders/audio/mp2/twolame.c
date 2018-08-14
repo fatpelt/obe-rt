@@ -27,14 +27,11 @@
 #include <libavutil/fifo.h>
 #include <libavresample/avresample.h>
 #include <libavutil/opt.h>
+#include <libavutil/mathematics.h>
 
 #define MP2_AUDIO_BUFFER_SIZE 50000
 
 #define LOCAL_DEBUG 0
-
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-#include <libklmonitoring/klmonitoring.h>
-#endif
 
 static void *start_encoder_mp2( void *ptr )
 {
@@ -42,11 +39,6 @@ static void *start_encoder_mp2( void *ptr )
     printf("%s()\n", __func__);
 #endif
 
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-    struct kl_histogram audio_encode;
-    int histogram_dump = 0;
-    kl_histogram_reset(&audio_encode, "audio frame encode", KL_BUCKET_VIDEO);
-#endif
     obe_aud_enc_params_t *enc_params = ptr;
     obe_t *h = enc_params->h;
     obe_encoder_t *encoder = enc_params->encoder;
@@ -60,7 +52,6 @@ static void *start_encoder_mp2( void *ptr )
 
     twolame_options *tl_opts = NULL;
     int output_size, frame_size, linesize; /* Linesize in libavresample terminology is the entire buffer size for packed formats */
-    int64_t cur_pts = -1;
     float *audio_buf = NULL;
     uint8_t *output_buf = NULL;
     AVAudioResampleContext *avr = NULL;
@@ -163,9 +154,6 @@ static void *start_encoder_mp2( void *ptr )
                 raw_frame->input_stream_id);
 #endif
 
-        if( cur_pts == -1 )
-            cur_pts = raw_frame->pts;
-
         /* Allocate the output buffer */
         if( av_samples_alloc( (uint8_t**)&audio_buf, &linesize, av_get_channel_layout_nb_channels( raw_frame->audio_frame.channel_layout ),
                               raw_frame->audio_frame.linesize, AV_SAMPLE_FMT_FLT, 0 ) < 0 )
@@ -183,19 +171,7 @@ static void *start_encoder_mp2( void *ptr )
 
         avresample_read( avr, (uint8_t**)&audio_buf, avresample_available( avr ) );
 
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-        kl_histogram_sample_begin(&audio_encode);
-#endif
         output_size = twolame_encode_buffer_float32_interleaved( tl_opts, audio_buf, raw_frame->audio_frame.num_samples, output_buf, MP2_AUDIO_BUFFER_SIZE );
-#ifdef HAVE_LIBKLMONITORING_KLMONITORING_H
-        kl_histogram_sample_complete(&audio_encode);
-        if (histogram_dump++ > 240) {
-                histogram_dump = 0;
-#if PRINT_HISTOGRAMS
-                kl_histogram_printf(&audio_encode);
-#endif
-        }
-#endif
 
         if( output_size < 0 )
         {
@@ -205,6 +181,9 @@ static void *start_encoder_mp2( void *ptr )
 
         free( audio_buf );
         audio_buf = NULL;
+
+        struct avfm_s avfm;
+        memcpy(&avfm, &raw_frame->avfm, sizeof(avfm));
 
         raw_frame->release_data( raw_frame );
         raw_frame->release_frame( raw_frame );
@@ -218,6 +197,7 @@ static void *start_encoder_mp2( void *ptr )
 
         av_fifo_generic_write( fifo, output_buf, output_size, NULL );
 
+        int framesProcessed = 0;
         while( av_fifo_size( fifo ) >= frame_size )
         {
             coded_frame = new_coded_frame( encoder->output_stream_id, frame_size );
@@ -227,12 +207,45 @@ static void *start_encoder_mp2( void *ptr )
                 goto end;
             }
             av_fifo_generic_read( fifo, coded_frame->data, frame_size, NULL );
-            coded_frame->pts = cur_pts;
+            memcpy(&coded_frame->avfm, &avfm, sizeof(avfm));
+
+            /* In low latency configurations where the framerate (33ms) is larger than the audio interval (24ms),
+             * during audio data wrapping conditions we have to prepare two audio output frames for a single video frame.
+             * We cannot output two audio frames with the same PTS, we MUST adjust the audio output rate for the
+             * second audio frame. So, for low latency, for second frames, bump the audio pts by 24ms.
+             * The most obvious case for this fix is anything with a video framerate of > 24ms. IE. this fix
+             * is necessary for in i59.94 i50 30p, 24p etc.
+             * In no cases should we ever see more than two audio frames per video frame,
+             * for this to be untrue, a video frame would have to be atleast 48ms, which is less and 20.8fps.
+             * OBE does not support frames as low as 20.8fps.
+             */
+            framesProcessed++;
+            if (h->obe_system == OBE_SYSTEM_TYPE_LOWEST_LATENCY || h->obe_system == OBE_SYSTEM_TYPE_LOW_LATENCY) {
+                if (framesProcessed > 1 && enc_params->frames_per_pes == 1) {
+                    coded_frame->avfm.audio_pts += 648000;
+                }
+            }
+
+            /* In  low latency mode, obe configures a single MP2 frame in every pes (enc_params->frames_per_pes), with a PTS interval of 24ms.
+             * In norm latency mode, obe configures        N MP2 frames in every pes, with a PTS interval of N*24ms.
+             * Typically, we see 96MS PTS increments in the transport packets, buts its equally valid to see 24ms.
+             * Depending on what latency mode we're in, we need to round to the nearest '24ms or N*' interval.
+             * Output PTS packets (27MHz) are rounded to nearest 24ms or N*24ms (typically 96ms for norm lat) interval on a 27MHz clock.
+             */
+            /* The outgoing PTS is rounded and based on recent h/w clock, so massive leaps in
+             * the h/w clock are automatically compensated for.
+             * 648000 represents number of ticks in 27Mhz clock for 24ms, the smallest MP2 framesize we can deliver.
+             */
+            int64_t rounded_pts = av_rescale(coded_frame->avfm.audio_pts, OBE_CLOCK, 648000 * enc_params->frames_per_pes);
+            rounded_pts /= OBE_CLOCK;
+            rounded_pts *= (648000 * enc_params->frames_per_pes);
+            coded_frame->pts = rounded_pts;
+            coded_frame->pts += ((int64_t)stream->audio_offset_ms * 27000);
+
             coded_frame->random_access = 1; /* Every frame output is a random access point */
+            coded_frame->type = CF_AUDIO;
 
             add_to_queue( &h->mux_queue, coded_frame );
-            /* We need to generate PTS because frame sizes have changed */
-            cur_pts += (double)MP2_NUM_SAMPLES * OBE_CLOCK * enc_params->frames_per_pes / enc_params->sample_rate;
         }
     }
 
