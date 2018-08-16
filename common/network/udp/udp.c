@@ -330,8 +330,11 @@ int udp_write( hnd_t handle, uint8_t *buf, int size )
                 struct timeval now;
                 gettimeofday(&now, NULL);
 
+#if 0
+                /* Highly experimenetal, can lead to packet corruption in some circumstance. */
                 set_timestamp_field_set(buf + i + offset, 8, now.tv_sec);
                 set_timestamp_field_set(buf + i + offset, 9, now.tv_usec);
+#endif
 #if 0
                 for (int j = 0; j < 64; j++) {
                     printf("%02x ", *(buf + i + offset + j));
