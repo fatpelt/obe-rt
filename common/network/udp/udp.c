@@ -310,14 +310,39 @@ int udp_open( hnd_t *p_handle, obe_udp_opts_t *udp_opts )
     return -1;
 }
 
+#include <encoders/video/sei-timestamp.h>
+
 int udp_write( hnd_t handle, uint8_t *buf, int size )
 {
     obe_udp_ctx *s = handle;
     int ret;
 
-    if( !s->is_connected )
+    if (!s->is_connected) {
+#if SEI_TIMESTAMPING
+        if (size == 1316) {
+            //printf("%s() %d bytes\n", __func__, size);
+
+            for (int i = 0; i < size; i += 188) {
+                int offset = ltn_uuid_find(buf + i, 188);
+                if (offset < 0)
+                      continue;
+
+                struct timeval now;
+                gettimeofday(&now, NULL);
+
+                set_timestamp_field_set(buf + i + offset, 8, now.tv_sec);
+                set_timestamp_field_set(buf + i + offset, 9, now.tv_usec);
+#if 0
+                for (int j = 0; j < 64; j++) {
+                    printf("%02x ", *(buf + i + offset + j));
+                }
+                printf("\n");
+#endif
+            }
+        }
+#endif
         ret = sendto( s->udp_fd, buf, size, 0, (struct sockaddr *)&s->dest_addr, s->dest_addr_len );
-    else
+    } else
         ret = send( s->udp_fd, buf, size, 0 );
 
     if( ret < 0 )

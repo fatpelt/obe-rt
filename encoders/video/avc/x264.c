@@ -154,6 +154,8 @@ printf("pic->img.i_csp = %d [%s] bits = %d\n",
     set_timestamp_field_set(p->payload, 5, tv.tv_usec);
     set_timestamp_field_set(p->payload, 6, 0);
     set_timestamp_field_set(p->payload, 7, 0);
+    set_timestamp_field_set(p->payload, 8, 0);
+    set_timestamp_field_set(p->payload, 9, 0);
 
     /* The remaining 8 bytes (time exit from compressor fields)
      * will be filled when the frame exists the compressor. */

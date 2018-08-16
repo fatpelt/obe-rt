@@ -212,6 +212,8 @@ static int convert_obe_to_x265_pic(struct context_s *ctx, x265_picture *p, struc
 	set_timestamp_field_set(x->payload, 5, tv.tv_usec);
 	set_timestamp_field_set(x->payload, 6, 0);
 	set_timestamp_field_set(x->payload, 7, 0);
+	set_timestamp_field_set(x->payload, 8, 0);
+	set_timestamp_field_set(x->payload, 9, 0);
 
 	/* The remaining 8 bytes (time exit from compressor fields)
 	 * will be filled when the frame exists the compressor. */
