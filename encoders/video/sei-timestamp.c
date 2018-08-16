@@ -41,6 +41,9 @@ int set_timestamp_field_set(unsigned char *buffer, uint32_t nr, uint32_t value)
 
 int ltn_uuid_find(const unsigned char *buf, unsigned int lengthBytes)
 {
+	if (lengthBytes < sizeof(ltn_uuid_sei_timestamp))
+		return -1;
+
 	for (int i = 0; i < lengthBytes - sizeof(ltn_uuid_sei_timestamp); i++) {
 		if (memcmp(buf + i, &ltn_uuid_sei_timestamp[0], sizeof(ltn_uuid_sei_timestamp)) == 0) {
 			return i;
