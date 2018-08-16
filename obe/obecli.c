@@ -35,6 +35,7 @@
 #include <readline/readline.h>
 #include <readline/history.h>
 #include <libavresample/avresample.h>
+#include <libmpegts.h>
 
 #include "obe.h"
 #include "obecli.h"
@@ -1312,6 +1313,9 @@ extern void mux_dump_queue(obe_t *h);
             printf("name: %s depth: %d item(s)\n", q->name, q->size);
         }
     }
+
+extern ts_writer_t *g_mux_ts_writer_handle;
+    ts_show_queues(g_mux_ts_writer_handle);
 
     return 0;
 }

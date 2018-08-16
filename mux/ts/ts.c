@@ -375,6 +375,8 @@ void mux_dump_queue(obe_t *h)
 
 int64_t initial_audio_latency = -1; /* ticks of 27MHz clock. Amount of audio (in time) we have buffered before the first video frame appeared. */
 
+ts_writer_t *g_mux_ts_writer_handle = NULL;
+
 void *open_muxer( void *ptr )
 {
     obe_mux_params_t *mux_params = ptr;
@@ -415,7 +417,7 @@ void *open_muxer( void *ptr )
     params.pat_period = mux_opts->pat_period;
 
     w = ts_create_writer();
-
+    g_mux_ts_writer_handle = w;
     if( !w )
     {
         fprintf( stderr, "[ts] could not create writer\n" );
