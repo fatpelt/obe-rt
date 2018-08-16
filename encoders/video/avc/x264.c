@@ -351,15 +351,14 @@ printf("Malloc failed\n");
 #if SEI_TIMESTAMPING
         /* Walk through each of the NALS and insert current time into any LTN sei timestamp frames we find. */
         for (int m = 0; m < i_nal; m++) {
-            if (nal[m].i_type == 6 &&
-                memcmp(&nal[m].p_payload[6], ltn_uuid_sei_timestamp, sizeof(ltn_uuid_sei_timestamp)) == 0) {
-
+            int offset = ltn_uuid_find(&nal[m].p_payload[0], nal[m].i_payload);
+            if (offset >= 0) {
                 struct timeval tv;
                 gettimeofday(&tv, NULL);
 
                 /* Add the time exit from compressor seconds/useconds. */
-                set_timestamp_field_set(&nal[m].p_payload[6], 6, tv.tv_sec);
-                set_timestamp_field_set(&nal[m].p_payload[6], 7, tv.tv_usec);
+                set_timestamp_field_set(&nal[m].p_payload[offset], 6, tv.tv_sec);
+                set_timestamp_field_set(&nal[m].p_payload[offset], 7, tv.tv_usec);
             }
         }
 #endif /* SEI_TIMESTAMPING */
