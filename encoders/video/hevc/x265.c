@@ -458,42 +458,6 @@ static void *x265_start_encoder( void *ptr )
 
 		}
 
-#if 0
-        /* Update speedcontrol based on the system state */
-        if( h->obe_system == OBE_SYSTEM_TYPE_GENERIC )
-        {
-            pthread_mutex_lock( &h->enc_smoothing_queue.mutex );
-            if( h->enc_smoothing_buffer_complete )
-            {
-                /* Wait until a frame is sent out. */
-                while( !h->enc_smoothing_last_exit_time )
-                    pthread_cond_wait( &h->enc_smoothing_queue.out_cv, &h->enc_smoothing_queue.mutex );
-
-                /* time elapsed since last frame was removed */
-                int64_t last_frame_delta = get_input_clock_in_mpeg_ticks( h ) - h->enc_smoothing_last_exit_time;
-
-                int64_t buffer_duration;
-                float buffer_fill;
-                if( h->enc_smoothing_queue.size )
-                {
-                    obe_coded_frame_t *first_frame, *last_frame;
-                    first_frame = h->enc_smoothing_queue.queue[0];
-                    last_frame = h->enc_smoothing_queue.queue[h->enc_smoothing_queue.size-1];
-                    int64_t frame_durations = last_frame->real_dts - first_frame->real_dts + frame_duration;
-                    buffer_fill = (float)(frame_durations - last_frame_delta)/buffer_duration;
-                }
-                else
-                    buffer_fill = (float)(-1 * last_frame_delta)/buffer_duration;
-
-#if X264_BUILD < 148
-                x264_speedcontrol_sync( s, buffer_fill, enc_params->avc_param.sc.i_buffer_size, 1 );
-#endif
-            }
-
-            pthread_mutex_unlock( &h->enc_smoothing_queue.mutex );
-        }
-#endif
-
 		int leave = 0;
 		while (!leave) { 
 			/* Compress PIC to NALS. */
