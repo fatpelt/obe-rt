@@ -225,16 +225,6 @@ static int dispatch_payload(struct context_s *ctx, const unsigned char *buf, int
 		sliceTypeLookup(ctx->hevc_picture_out->sliceType));
 #endif
 
-	/* Prep the frame. */
-#if 0
-static FILE *fh = NULL;
-if (fh == NULL)
-  fh = fopen("/tmp/hevc.nals", "wb");
-
-if (fh)
-  fwrite(ctx->hevc_nals[z].payload, 1, ctx->hevc_nals[z].sizeBytes, fh);
-#endif
-
 	struct userdata_s *out_ud = ctx->hevc_picture_out->userData; 
 	if (out_ud) {
 		/* Make sure we push the original hardware timing into the new frame. */
