@@ -622,7 +622,7 @@ static void *x265_start_encoder( void *ptr )
 			} else
 #endif
 			if (ret > 0) {
-#if 0
+
 				/* Collapse N nals into a single allocation, so we can submit a single coded_frame, with a single clock. */
 				int nalbuffer_size = 0;
 				for (int z = 0; z < ctx->i_nal; z++) {
@@ -638,11 +638,6 @@ static void *x265_start_encoder( void *ptr )
 
 				dispatch_payload(ctx, nalbuffer, nalbuffer_size, arrival_time);
 				free(nalbuffer);
-#else
-				for (int z = 0; z < ctx->i_nal; z++) {
-					dispatch_payload(ctx, ctx->hevc_nals[z].payload, ctx->hevc_nals[z].sizeBytes, arrival_time);
-				} /* For each NAL */
-#endif
 
 			} /* if nal_bytes > 0 */
 
