@@ -223,6 +223,105 @@ static int convert_obe_to_x265_pic(struct context_s *ctx, x265_picture *p, struc
 	return 0;
 }
 
+static int dispatch_payload(struct context_s *ctx, const unsigned char *buf, int lengthBytes, int64_t arrival_time)
+{
+	obe_coded_frame_t *cf = new_coded_frame(ctx->encoder->output_stream_id, lengthBytes);
+	if (!cf) {
+		fprintf(stderr, MESSAGE_PREFIX " unable to alloc a new coded frame\n");
+		return -1;
+	}
+
+#if LOCAL_DEBUG
+	printf(MESSAGE_PREFIX " --  acquired %7d nal bytes, pts = %12" PRIi64 " dts = %12" PRIi64 ", ",
+		lengthBytes,
+		ctx->hevc_picture_out->pts,
+		ctx->hevc_picture_out->dts);
+	printf("poc %8d  sliceType %d [%s]\n",
+		ctx->hevc_picture_out->poc, ctx->hevc_picture_out->sliceType,
+		sliceTypeLookup(ctx->hevc_picture_out->sliceType));
+#endif
+
+	/* Prep the frame. */
+#if 0
+static FILE *fh = NULL;
+if (fh == NULL)
+  fh = fopen("/tmp/hevc.nals", "wb");
+
+if (fh)
+  fwrite(ctx->hevc_nals[z].payload, 1, ctx->hevc_nals[z].sizeBytes, fh);
+#endif
+
+	struct userdata_s *out_ud = ctx->hevc_picture_out->userData; 
+	if (out_ud) {
+		/* Make sure we push the original hardware timing into the new frame. */
+		memcpy(&cf->avfm, &out_ud->avfm, sizeof(struct avfm_s));
+
+		cf->pts = out_ud->avfm.audio_pts;
+		userdata_free(out_ud);
+		out_ud = NULL;
+		ctx->hevc_picture_out->userData = 0;
+	} else {
+		//fprintf(stderr, MESSAGE_PREFIX " missing pic out userData\n");
+	}
+
+	memcpy(cf->data, buf, lengthBytes);
+	cf->len                      = lengthBytes;
+	cf->type                     = CF_VIDEO;
+	cf->pts                      = ctx->hevc_picture_out->pts + 45000;
+	cf->real_pts                 = ctx->hevc_picture_out->pts + 45000;
+	cf->real_dts                 = ctx->hevc_picture_out->dts;
+	cf->cpb_initial_arrival_time = cf->real_pts;
+
+	double estimated_final = ((double)cf->len / 0.0810186) + (double)cf->cpb_initial_arrival_time;
+	cf->cpb_final_arrival_time   = estimated_final;
+
+	cf->priority = IS_X265_TYPE_I(ctx->hevc_picture_out->sliceType);
+	cf->random_access = IS_X265_TYPE_I(ctx->hevc_picture_out->sliceType);
+
+	if (ctx->h->obe_system == OBE_SYSTEM_TYPE_LOWEST_LATENCY || ctx->h->obe_system == OBE_SYSTEM_TYPE_LOW_LATENCY) {
+		cf->arrival_time = arrival_time;
+#if SERIALIZE_CODED_FRAMES
+		serialize_coded_frame(cf);
+#endif
+		add_to_queue(&ctx->h->mux_queue, cf);
+		//printf(MESSAGE_PREFIX " Encode Latency %"PRIi64" \n", obe_mdate() - cf->arrival_time);
+	} else {
+#if SERIALIZE_CODED_FRAMES
+		serialize_coded_frame(cf);
+#endif
+#if FRAMES_FROM_DISK
+		/* Discard the encoded output. */
+		destroy_coded_frame(cf);
+
+		/* Read the next frame from disk, and use that instead.... */
+		while (1) {
+			obe_coded_frame_t *cf = deserialize_coded_frame();
+			if (!cf)
+				break;
+
+			/* Dont' assume we can reference cf after the queue add. */
+			int len = cf->len;
+
+			printf("[from disk]  ");
+			coded_frame_print(cf);
+
+			add_to_queue(&ctx->h->enc_smoothing_queue, cf);
+
+
+			/* Break if we've process a large frame (iframe), otherwise assume its SPS/PPS/SEI
+			 * and continue processing.
+			 */
+			if (len > 250)
+				break;
+		}
+#else
+		add_to_queue(&ctx->h->enc_smoothing_queue, cf);
+#endif
+	}
+
+	return 0;
+}
+
 /* OBE will pass us a AVC struct initially. Pull out any important pieces
  * and pass those to x265.
  */
@@ -523,130 +622,28 @@ static void *x265_start_encoder( void *ptr )
 			} else
 #endif
 			if (ret > 0) {
+#if 0
+				/* Collapse N nals into a single allocation, so we can submit a single coded_frame, with a single clock. */
+				int nalbuffer_size = 0;
 				for (int z = 0; z < ctx->i_nal; z++) {
-					obe_coded_frame_t *cf = new_coded_frame(ctx->encoder->output_stream_id, ctx->hevc_nals[z].sizeBytes);
-					if (!cf) {
-						fprintf(stderr, MESSAGE_PREFIX " unable to alloc a new coded frame\n");
-						break;
-					}
-#if LOCAL_DEBUG
-					printf(MESSAGE_PREFIX " acquired %7d nals bytes (%d nals), pts = %12" PRIi64 " dts = %12" PRIi64 ", ret = %d, ",
-						ctx->hevc_nals[z].sizeBytes, ctx->i_nal - z,
-						ctx->hevc_picture_out->pts,
-						ctx->hevc_picture_out->dts,
-						ret);
-					printf("poc %8d  sliceType %d [%s]\n",
-						ctx->hevc_picture_out->poc, ctx->hevc_picture_out->sliceType,
-						sliceTypeLookup(ctx->hevc_picture_out->sliceType));
-#endif
-					/* Prep the frame. */
-#if 0
-static FILE *fh = NULL;
-if (fh == NULL)
-  fh = fopen("/tmp/hevc.nals", "wb");
+					nalbuffer_size += ctx->hevc_nals[z].sizeBytes;
+				}
 
-if (fh)
-  fwrite(ctx->hevc_nals[z].payload, 1, ctx->hevc_nals[z].sizeBytes, fh);
-#endif
+				unsigned char *nalbuffer = malloc(((nalbuffer_size / getpagesize()) + 1) * getpagesize());
+				int offset = 0;
+				for (int z = 0; z < ctx->i_nal; z++) {
+					memcpy(nalbuffer + offset, ctx->hevc_nals[z].payload, ctx->hevc_nals[z].sizeBytes);
+					offset += ctx->hevc_nals[z].sizeBytes;
+				}
 
-					struct userdata_s *out_ud = ctx->hevc_picture_out->userData; 
-					if (out_ud) {
-						/* Make sure we push the original hardware timing into the new frame. */
-						memcpy(&cf->avfm, &out_ud->avfm, sizeof(struct avfm_s));
-
-						cf->pts = out_ud->avfm.audio_pts;
-						userdata_free(out_ud);
-						out_ud = NULL;
-						ctx->hevc_picture_out->userData = 0;
-					} else {
-						//fprintf(stderr, MESSAGE_PREFIX " missing pic out userData\n");
-					}
-
-					memcpy(cf->data, ctx->hevc_nals[z].payload, ctx->hevc_nals[z].sizeBytes);
-					cf->len                      = ctx->hevc_nals[z].sizeBytes;
-					cf->type                     = CF_VIDEO;
-					cf->pts                      = ctx->hevc_picture_out->pts + 45000;
-					cf->real_pts                 = ctx->hevc_picture_out->pts + 45000;
-					cf->real_dts                 = ctx->hevc_picture_out->dts;
-					cf->cpb_initial_arrival_time = cf->real_pts;
-
-					double estimated_final = ((double)cf->len / 0.0810186) + (double)cf->cpb_initial_arrival_time;
-					cf->cpb_final_arrival_time   = estimated_final;
-
-#if 0
-// X264 specific, I don't think we need to do this for HEVC
-            cf->pts = coded_frame->avfm.audio_pts;
-
-            /* The audio and video clocks jump with different intervals when the cable
-             * is disconnected, suggestedint a BM firmware bug.
-             * We'll use the audio clock regardless, for both audio and video compressors.
-             */
-            int64_t new_dts  = avfm->audio_pts + 24299700 - abs(cf->real_dts - cf->real_pts) + (2 * 450450);
-
-            /* We need to userstand, for this temporal frame, how much it varies from the dts. */
-            int64_t pts_diff = cf->real_dts - cf->real_pts;
-
-            /* Construct a new PTS based on the hardware DTS and the PTS offset difference. */
-            int64_t new_pts  = new_dts - pts_diff;
-
-            cf->real_dts = new_dts;
-            cf->real_pts = new_pts;
-            cf->cpb_initial_arrival_time = new_dts;
-            cf->cpb_final_arrival_time   = new_dts + abs(pic_out.hrd_timing.cpb_final_arrival_time - pic_out.hrd_timing.cpb_final_arrival_time);
-
-            cpb_removal_time = cf->real_pts; /* Only used for manually eyeballing the video output clock. */
-
-#endif
-#if 0
-			printf(MESSAGE_PREFIX " real_pts:%" PRIi64 " real_dts:%" PRIi64 " (%.3f %.3f)\n",
-				cf->real_pts, cf->real_dts,
-				ctx->hevc_picture_out->hrd_timing.dpb_output_time, pic_out.hrd_timing.cpb_removal_time);
-#endif
-
-					cf->priority = IS_X265_TYPE_I(ctx->hevc_picture_out->sliceType);
-					cf->random_access = IS_X265_TYPE_I(ctx->hevc_picture_out->sliceType);
-
-					if (ctx->h->obe_system == OBE_SYSTEM_TYPE_LOWEST_LATENCY || ctx->h->obe_system == OBE_SYSTEM_TYPE_LOW_LATENCY) {
-						cf->arrival_time = arrival_time;
-#if SERIALIZE_CODED_FRAMES
-						serialize_coded_frame(cf);
-#endif
-						add_to_queue(&ctx->h->mux_queue, cf);
-						//printf(MESSAGE_PREFIX " Encode Latency %"PRIi64" \n", obe_mdate() - cf->arrival_time);
-					} else {
-#if SERIALIZE_CODED_FRAMES
-						serialize_coded_frame(cf);
-#endif
-#if FRAMES_FROM_DISK
-						/* Discard the encoded output. */
-						destroy_coded_frame(cf);
-
-						/* Read the next frame from disk, and use that instead.... */
-						while (1) {
-							obe_coded_frame_t *cf = deserialize_coded_frame();
-							if (!cf)
-								break;
-
-							/* Dont' assume we can reference cf after the queue add. */
-							int len = cf->len;
-
-							printf("[from disk]  ");
-							coded_frame_print(cf);
-
-							add_to_queue(&ctx->h->enc_smoothing_queue, cf);
-
-
-							/* Break if we've process a large frame (iframe), otherwise assume its SPS/PPS/SEI
-							 * and continue processing.
-							 */
-							if (len > 250)
-								break;
-						}
+				dispatch_payload(ctx, nalbuffer, nalbuffer_size, arrival_time);
+				free(nalbuffer);
 #else
-						add_to_queue(&ctx->h->enc_smoothing_queue, cf);
-#endif
-					}
+				for (int z = 0; z < ctx->i_nal; z++) {
+					dispatch_payload(ctx, ctx->hevc_nals[z].payload, ctx->hevc_nals[z].sizeBytes, arrival_time);
 				} /* For each NAL */
+#endif
+
 			} /* if nal_bytes > 0 */
 
 			leave = 1;
