@@ -42,6 +42,9 @@
 #include <time.h>
 #include "obe.h"
 
+/* Enable some realtime debugging commands */
+#define DO_SET_VARIABLE 0
+
 #define MAX_DEVICES 1
 #define MAX_STREAMS 40
 #define MAX_CHANNELS 16

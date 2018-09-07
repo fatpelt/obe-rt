@@ -743,9 +743,7 @@ fail:
     return S_OK;
 }
 
-#define SET_VARIABLE_COMMANDS 0
-
-#if SET_VARIABLE_COMMANDS
+#if DO_SET_VARIABLE
 static int wipeAudio(IDeckLinkAudioInputPacket *audioframe)
 {
 	uint8_t *buf;
@@ -918,7 +916,7 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
     }
 #endif
 
-#if SET_VARIABLE_COMMANDS
+#if DO_SET_VARIABLE
     if (g_decklink_fake_every_other_frame_lose_audio_payload) {
         /* Loose the audio for every other video frame. */
         if (g_decklink_fake_every_other_frame_lose_audio_payload_count++ & 1) {
@@ -968,7 +966,7 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
         g_decklink_fake_every_other_frame_lose_audio_payload_time = 0;
     }
 
-#if SET_VARIABLE_COMMANDS
+#if DO_SET_VARIABLE
     if (g_decklink_fake_lost_payload)
     {
         if (g_decklink_fake_lost_payload_time == 0) {

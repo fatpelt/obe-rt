@@ -1101,6 +1101,12 @@ extern int64_t g_mux_smoother_last_total_item_size;
 extern int64_t g_mux_smoother_fifo_pcr_size;
 extern int64_t g_mux_smoother_fifo_data_size;
 
+/* UDP Packet output */
+extern int g_udp_output_drop_next_video_packet;
+extern int g_udp_output_drop_next_audio_packet;
+extern int g_udp_output_drop_next_packet;
+extern int g_udp_output_stall_packet_ms;
+
 void display_variables()
 {
     printf("sdi_input.fake_60sec_lost_payload = %d [%s]\n", g_decklink_fake_lost_payload,
@@ -1125,6 +1131,14 @@ void display_variables()
         g_mux_smoother_fifo_pcr_size);
     printf("mux_smoother.fifo_data_size        = %" PRIi64 " (bytes)\n",
         g_mux_smoother_fifo_data_size);
+    printf("udp_output.drop_next_video_packet  = %d\n",
+        g_udp_output_drop_next_video_packet);
+    printf("udp_output.drop_next_audio_packet  = %d\n",
+        g_udp_output_drop_next_audio_packet);
+    printf("udp_output.drop_next_packet  = %d\n",
+        g_udp_output_drop_next_packet);
+    printf("udp_output.stall_packet_ms  = %d\n",
+        g_udp_output_stall_packet_ms);
 
 }
 
@@ -1156,6 +1170,18 @@ static int set_variable(char *command, obecli_command_t *child)
     } else
     if (strcasecmp(var, "audio_encoder.ac3_offset_ms") == 0) {
         ac3_offset_ms = val;
+    } else
+    if (strcasecmp(var, "udp_output.drop_next_video_packet") == 0) {
+        g_udp_output_drop_next_video_packet = val;
+    } else
+    if (strcasecmp(var, "udp_output.drop_next_audio_packet") == 0) {
+        g_udp_output_drop_next_audio_packet = val;
+    } else
+    if (strcasecmp(var, "udp_output.drop_next_packet") == 0) {
+        g_udp_output_drop_next_packet = val;
+    } else
+    if (strcasecmp(var, "udp_output.stall_packet_ms") == 0) {
+        g_udp_output_stall_packet_ms = val;
     } else {
         printf("illegal variable name.\n");
         return -1;
@@ -1851,6 +1877,9 @@ static void _usage(const char *prog, int exitcode)
 #endif
     );
     printf("Decklink SDK %s\n", BLACKMAGIC_DECKLINK_API_VERSION_STRING);
+#if DO_SET_VARIABLE
+    printf("--- CUSTOM BUILD WITH SET VARIABLES ENABLED\n");
+#endif
 
     printf("\n");
 

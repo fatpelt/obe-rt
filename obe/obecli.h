@@ -24,7 +24,7 @@
 #ifndef OBECLI_H
 #define OBECLI_H
 
-#define DO_SET_VARIABLE 0
+#include <common/common.h>
 
 void obe_cli_printf( const char *name, const char *fmt, ... );
 
