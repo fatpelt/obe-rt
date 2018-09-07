@@ -972,7 +972,7 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
     if (g_decklink_fake_lost_payload)
     {
         if (g_decklink_fake_lost_payload_time == 0) {
-            g_decklink_fake_lost_payload_time = now + g_decklink_fake_lost_payload_interval;
+            g_decklink_fake_lost_payload_time = now;
             g_decklink_fake_lost_payload_state = 0;
         } else
         if (now >= g_decklink_fake_lost_payload_time) {
