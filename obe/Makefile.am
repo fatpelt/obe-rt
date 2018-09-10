@@ -22,7 +22,9 @@ if LIBX265
 LDFLAGS += -lx265
 endif
 if LIBVA
+LDFLAGS += -L../../vaapi/libva-utils/common/.libs
 LDFLAGS += -lva -lva-display
+CFLAGS += -I../../vaapi/libva-utils/common
 endif
 
 CXXFLAGS = $(CFLAGS)

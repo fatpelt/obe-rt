@@ -31,7 +31,7 @@
 #include "va_display.h"
 #include <libyuv.h>
 
-#define LOCAL_DEBUG 0
+#define LOCAL_DEBUG 1
 
 #define MESSAGE_PREFIX "[avc-vaapi]:"
 
@@ -911,7 +911,7 @@ static int vaapi_init_va(struct context_s *ctx)
     ctx->MaxFrameNum = (2<<16);
     ctx->srcyuv_fourcc = VA_FOURCC_NV12;
     ctx->frame_bitrate = ctx->frame_width * ctx->frame_height * 12 * ctx->frame_rate / 50;
-    ctx->frame_bitrate /= 3;
+    ctx->frame_bitrate /= 5;
 printf("frame_bitrate = %d\n", ctx->frame_bitrate);
     ctx->misc_priv_type = 0;
     ctx->misc_priv_value = 0;
