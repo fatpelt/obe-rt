@@ -2820,15 +2820,15 @@ framecount++;
 #if SEI_TIMESTAMPING
 			/* Walk through each of the NALS and insert current time into any LTN sei timestamp frames we find. */
 			for (int m = 0; m < ctx->i_nal; m++) {
-				if (ctx->hevc_nals[m].type == 39 &&
-					memcmp(&ctx->hevc_nals[m].payload[23], ltn_uuid_sei_timestamp, sizeof(ltn_uuid_sei_timestamp)) == 0)
+				int offset = ltn_uuid_find(&ctx->hevc_nals[m].payload[0], ctx->hevc_nals[m].sizeBytes);
+				if (offset >= 0) {
 				{
 					struct timeval tv;
 					gettimeofday(&tv, NULL);
 
 					/* Add the time exit from compressor seconds/useconds. */
-					set_timestamp_field_set(&ctx->hevc_nals[m].payload[23], 6, tv.tv_sec);
-					set_timestamp_field_set(&ctx->hevc_nals[m].payload[23], 7, tv.tv_usec);
+					set_timestamp_field_set(&ctx->hevc_nals[m].payload[offset], 6, tv.tv_sec);
+					set_timestamp_field_set(&ctx->hevc_nals[m].payload[offset], 7, tv.tv_usec);
 				}
 			}
 #endif
