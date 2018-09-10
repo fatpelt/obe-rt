@@ -61,7 +61,7 @@ obecli_ctx_t cli;
 /* Ctrl-C handler */
 static volatile int b_ctrl_c = 0;
 
-static int running = 0;
+static int g_running = 0;
 static int system_type_value = OBE_SYSTEM_TYPE_GENERIC;
 
 static const char * const system_types[]             = { "generic", "lowestlatency", "lowlatency", 0 };
@@ -1611,7 +1611,7 @@ static int start_encode( char *command, obecli_command_t *child )
 {
     obe_input_stream_t *input_stream;
     obe_output_stream_t *output_stream;
-    FAIL_IF_ERROR( running, "Encoder already running\n" );
+    FAIL_IF_ERROR( g_running, "Encoder already running\n" );
     FAIL_IF_ERROR( !cli.program.num_streams, "No active devices\n" );
 
     for( int i = 0; i < cli.num_output_streams; i++ )
@@ -1710,7 +1710,7 @@ static int start_encode( char *command, obecli_command_t *child )
     if( obe_start( cli.h ) < 0 )
         return -1;
 
-    running = 1;
+    g_running = 1;
     printf( "Encoding started\n" );
 
     return 0;
@@ -1753,7 +1753,7 @@ static int stop_encode( char *command, obecli_command_t *child )
     free( cli.output.outputs );
 
     memset( &cli, 0, sizeof(cli) );
-    running = 0;
+    g_running = 0;
 
     return 0;
 }
