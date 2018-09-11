@@ -83,7 +83,8 @@ static void userdata_free(struct userdata_s *ud)
 	free(ud);
 }
 
-const char *sliceTypeLookup(uint32_t type)
+#if 0
+static const char *sliceTypeLookup(uint32_t type)
 {
 	switch(type) {
 	case X265_TYPE_AUTO: return "X265_TYPE_AUTO";
@@ -95,6 +96,7 @@ const char *sliceTypeLookup(uint32_t type)
 	default:             return "UNKNOWN";
 	}
 }
+#endif
 
 /* Convert a obe_raw_frame_t into a x264_picture_t struct.
  * Incoming frame is colorspace YUV420P.
