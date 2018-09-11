@@ -207,7 +207,7 @@ static int vaapi_encode_frame(struct context_s *ctx, obe_raw_frame_t *rf, const 
 		current_IDR_display = current_frame_display;
 	}
 
-printf("%s : %lld %s : %lld type : %d\n", "encoding order", current_frame_encoding, "Display order", current_frame_display, current_frame_type);
+//printf("%s : %lld %s : %lld type : %d\n", "encoding order", current_frame_encoding, "Display order", current_frame_display, current_frame_type);
 
 	/* check if the source frame is ready */
 	while (srcsurface_status[current_slot] != SRC_SURFACE_IN_ENCODING) {

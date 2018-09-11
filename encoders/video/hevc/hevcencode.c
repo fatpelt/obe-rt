@@ -421,7 +421,7 @@ static  int frame_height_aligned;
 //static  int frame_rate = 30;
 static  unsigned int frame_count = 60;
 //static  unsigned int frame_coded = 0;
-static  unsigned int frame_bitrate = 8000000;
+static  unsigned int frame_bitrate = 4000;
 //static  unsigned int frame_slices = 1;
 //static  double frame_size = 0;
 static  int initial_qp = 26;
@@ -430,6 +430,9 @@ static  int intra_period = 30;
 static  int intra_idr_period = 60;
 static  int ip_period = 1;
 static  int rc_mode = VA_RC_CQP;
+//static  int rc_mode = VA_RC_CBR;
+//static  int rc_mode = VA_RC_VBR;
+//static  int rc_mode = VA_RC_VBR_CONSTRAINED;
 static  int rc_default_modes[] = {
     VA_RC_VBR,
     VA_RC_CQP,
