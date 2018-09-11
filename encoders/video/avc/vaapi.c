@@ -185,19 +185,19 @@ struct userdata_s
 	struct avfm_s avfm;
 };
 
-struct userdata_s *userdata_calloc()
+static struct userdata_s *userdata_calloc()
 {
 	struct userdata_s *ud = calloc(1, sizeof(*ud));
 	return ud;
 }
 
-int userdata_set(struct userdata_s *ud, struct avfm_s *s)
+static int userdata_set(struct userdata_s *ud, struct avfm_s *s)
 {
 	memcpy(&ud->avfm, s, sizeof(struct avfm_s));
 	return 0;
 }
 
-void userdata_free(struct userdata_s *ud)
+static void userdata_free(struct userdata_s *ud)
 {
 	memset(ud, 0, sizeof(*ud));
 	free(ud);
@@ -1172,7 +1172,7 @@ printf("frame_bitrate = %d\n", ctx->frame_bitrate);
 #define FRAME_B 1
 #define FRAME_I 2
 #define FRAME_IDR 7
-void encoding2display_order(
+static void encoding2display_order(
     struct context_s *ctx,
     unsigned long long encoding_order,int intra_period,
     int intra_idr_period,int ip_period,
