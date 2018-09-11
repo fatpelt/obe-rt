@@ -292,6 +292,7 @@ static const int mpegts_stream_info[][3] =
     { VIDEO_MPEG2, LIBMPEGTS_VIDEO_MPEG2,    LIBMPEGTS_STREAM_ID_MPEGVIDEO },
     { VIDEO_HEVC_X265,  LIBMPEGTS_VIDEO_HEVC,     LIBMPEGTS_STREAM_ID_MPEGVIDEO },
     { VIDEO_AVC_VAAPI,  LIBMPEGTS_VIDEO_AVC,     LIBMPEGTS_STREAM_ID_MPEGVIDEO },
+    { VIDEO_HEVC_VAAPI,  LIBMPEGTS_VIDEO_HEVC,     LIBMPEGTS_STREAM_ID_MPEGVIDEO },
     /* TODO 302M */
     { AUDIO_MP2,   LIBMPEGTS_AUDIO_MPEG2,    LIBMPEGTS_STREAM_ID_MPEGAUDIO },
     { AUDIO_AC_3,  LIBMPEGTS_AUDIO_AC3,      LIBMPEGTS_STREAM_ID_PRIVATE_1 },
@@ -511,7 +512,7 @@ void *open_muxer( void *ptr )
             stream->stream_identifier = output_stream->ts_opts.stream_identifier;
         }
 
-        if (stream_format == VIDEO_AVC || stream_format == VIDEO_HEVC_X265 || stream_format == VIDEO_AVC_VAAPI)
+        if (stream_format == VIDEO_AVC || stream_format == VIDEO_HEVC_X265 || stream_format == VIDEO_AVC_VAAPI || stream_format == VIDEO_HEVC_VAAPI)
         {
             encoder_wait( h, output_stream->output_stream_id );
 
@@ -591,6 +592,13 @@ void *open_muxer( void *ptr )
         {
             if (ts_setup_mpegvideo_stream(w, stream->pid, 40, HEVC_PROFILE_MAIN, 0, 0, 0) < 0) {
                 fprintf(stderr, "[ts] Could not setup HEVC video stream\n");
+                goto end;
+            }
+        }
+        else if (stream_format == VIDEO_HEVC_VAAPI)
+        {
+            if (ts_setup_mpegvideo_stream(w, stream->pid, 40, HEVC_PROFILE_MAIN, 0, 0, 0) < 0) {
+                fprintf(stderr, "[ts] Could not setup HEVC VAAPI video stream\n");
                 goto end;
             }
         }

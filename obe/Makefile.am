@@ -66,6 +66,7 @@ obecli_SOURCES += ../encoders/video/hevc/x265.c
 endif
 if LIBVA
 obecli_SOURCES += ../encoders/video/avc/vaapi.c
+obecli_SOURCES += ../encoders/video/hevc/vaapi-hevc.c
 endif
 obecli_SOURCES += ../encoders/video/sei-timestamp.c
 obecli_SOURCES += ../common/network/udp/udp.c

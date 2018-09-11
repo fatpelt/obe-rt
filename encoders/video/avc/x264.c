@@ -26,6 +26,7 @@
 #include <libavutil/mathematics.h>
 
 #define DEBUG_CODEC_TIMING 0
+#define MODULE "[x264]: "
 
 int64_t cpb_removal_time = 0;
 
@@ -191,6 +192,39 @@ static void *x264_start_encoder( void *ptr )
 
     enc_params->avc_param.pf_log = x264_logger;
     //enc_params->avc_param.i_log_level = 65535;
+
+    printf("%d x %d\n", enc_params->avc_param.i_width, enc_params->avc_param.i_height);
+    printf("%d\n", enc_params->avc_param.i_fps_num);
+
+    if (h->obe_system == OBE_SYSTEM_TYPE_GENERIC) {
+        if ((enc_params->avc_param.i_width == 1920) && (enc_params->avc_param.i_height == 1080)) {
+            /* For 1080p60 we can't sustain realtime. Adjust some params. */
+            if ((enc_params->avc_param.i_fps_num > 30000) || ((enc_params->avc_param.i_fps_num < 1000) && (enc_params->avc_param.i_fps_num > 30))) {
+                /* For framerates above p30 assume worst case p60. */
+                if (enc_params->avc_param.i_threads < 8) {
+                    printf(MODULE "configuration threads defined as %d, need a minimum of 8. Adjusting to 8\n",
+                        enc_params->avc_param.i_threads);
+                    enc_params->avc_param.i_threads = 8;
+                }
+
+                if (enc_params->avc_param.i_keyint_max > 4) {
+                    printf(MODULE "configuration keyint defined as %d, need a maximum of 4. Adjusting to 4\n",
+                        enc_params->avc_param.i_keyint_max);
+                    enc_params->avc_param.i_keyint_max = 4;
+                }
+
+                if (enc_params->avc_param.rc.i_lookahead != enc_params->avc_param.i_keyint_max) {
+                    printf(MODULE "configuration lookahead defined as %d, need a maximum of %d. Adjusting to %d\n",
+                        enc_params->avc_param.rc.i_lookahead,
+                        enc_params->avc_param.i_keyint_max,
+                        enc_params->avc_param.i_keyint_max);
+                    enc_params->avc_param.rc.i_lookahead = enc_params->avc_param.i_keyint_max;
+                }
+            }
+        }
+    } else
+    if (h->obe_system == OBE_SYSTEM_TYPE_LOWEST_LATENCY || h->obe_system == OBE_SYSTEM_TYPE_LOW_LATENCY) {
+    }
 
 #if 0
     enc_params->avc_param.i_csp = X264_CSP_I422;

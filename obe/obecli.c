@@ -685,6 +685,9 @@ static int set_stream( char *command, obecli_command_t *child )
                 else
                 if (strcasecmp(video_codec, "AVC_VAAPI") == 0)
                     video_codec_id = 2; /* AVC via VAAPI */
+                else
+                if (strcasecmp(video_codec, "HEVC_VAAPI") == 0)
+                    video_codec_id = 3; /* HEVC via VAAPI */
 #endif
                 else {
                     fprintf(stderr, "video codec selection is invalid\n" );
@@ -767,6 +770,9 @@ static int set_stream( char *command, obecli_command_t *child )
                 } else
                 if (video_codec_id == 2) {
                     cli.output_streams[output_stream_id].stream_format = VIDEO_AVC_VAAPI;
+                } else
+                if (video_codec_id == 3) {
+                    cli.output_streams[output_stream_id].stream_format = VIDEO_HEVC_VAAPI;
                 }
 
                 avc_param->rc.i_vbv_max_bitrate = obe_otoi( vbv_maxrate, 0 );
@@ -1583,6 +1589,8 @@ static int show_output_streams( char *command, obecli_command_t *child )
                 printf( "Video: HEVC (X265)\n" );
             else if (output_stream->stream_format == VIDEO_AVC_VAAPI)
                 printf( "Video: AVC (VAAPI)\n" );
+            else if (output_stream->stream_format == VIDEO_HEVC_VAAPI)
+                printf( "Video: HEVC (VAAPI)\n" );
             else 
                 printf( "Video: AVC OR HEVC\n");
         }
@@ -1861,7 +1869,7 @@ static void _usage(const char *prog, int exitcode)
     printf("Including Kernel Labs enhancements.\n");
     printf("Version 2.0 (" GIT_VERSION ")\n");
     printf("x264 build#%d (%dbit support)\n", X264_BUILD, X264_BIT_DEPTH);
-    printf("Supports HEVC via X265: %s\n",
+    printf("Supports HEVC via  X265: %s\n",
 #if HAVE_X265_H
         "true"
 #else
@@ -1870,6 +1878,13 @@ static void _usage(const char *prog, int exitcode)
     );
 
     printf("Supports HEVC via VAAPI: %s\n",
+#if HAVE_VA_VA_H
+        "true"
+#else
+        "false"
+#endif
+    );
+    printf("Supports  AVC via VAAPI: %s\n",
 #if HAVE_VA_VA_H
         "true"
 #else

@@ -41,5 +41,6 @@ typedef struct
 extern const obe_vid_enc_func_t x264_obe_encoder;
 extern const obe_vid_enc_func_t x265_obe_encoder;
 extern const obe_vid_enc_func_t avc_vaapi_obe_encoder;
+extern const obe_vid_enc_func_t hevc_vaapi_obe_encoder;
 
 #endif

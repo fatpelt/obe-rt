@@ -184,6 +184,7 @@ enum stream_formats_e
     SMPTE2038,
     VIDEO_HEVC_X265,
     VIDEO_AVC_VAAPI,
+    VIDEO_HEVC_VAAPI,
 };
 
 enum mp2_mode_e
