@@ -41,6 +41,7 @@
 #include <sys/time.h>
 #include <time.h>
 #include "obe.h"
+#include <common/queue.h>
 
 /* Enable some realtime debugging commands */
 #define DO_SET_VARIABLE 0
@@ -321,17 +322,6 @@ typedef struct
     int frames;
     int drop_frame;
 } obe_timecode_t;
-
-typedef struct
-{
-    char name[128];
-    void **queue;
-    int  size;
-
-    pthread_mutex_t mutex;
-    pthread_cond_t  in_cv;
-    pthread_cond_t  out_cv;
-} obe_queue_t;
 
 enum avfm_frame_type_e { AVFM_AUDIO_A52, AVFM_VIDEO, AVFM_AUDIO_PCM };
 struct avfm_s {
@@ -624,11 +614,6 @@ obe_muxed_data_t *new_muxed_data( int len );
 void destroy_muxed_data( obe_muxed_data_t *muxed_data );
 
 void add_device( obe_t *h, obe_device_t *device );
-
-int add_to_queue( obe_queue_t *queue, void *item );
-int remove_from_queue( obe_queue_t *queue );
-int remove_from_queue_without_lock(obe_queue_t *queue);
-int remove_item_from_queue( obe_queue_t *queue, void *item );
 
 int add_to_filter_queue( obe_t *h, obe_raw_frame_t *raw_frame );
 int add_to_encode_queue( obe_t *h, obe_raw_frame_t *raw_frame, int output_stream_id );
