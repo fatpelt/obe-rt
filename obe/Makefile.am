@@ -57,6 +57,7 @@ obecli_SOURCES += ../common/linsys/util.c
 obecli_SOURCES += ../common/x86/x86inc.asm
 obecli_SOURCES += ../common/x86/x86util.asm
 obecli_SOURCES += ../common/common_lavc.c
+obecli_SOURCES += ../common/queue.c
 obecli_SOURCES += x86_sdi.o
 obecli_SOURCES += vfilter.o
 
