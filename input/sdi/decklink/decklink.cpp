@@ -980,7 +980,8 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
         } else
         if (now >= g_decklink_fake_lost_payload_time) {
             g_decklink_fake_lost_payload_time = now + g_decklink_fake_lost_payload_interval;
-            g_decklink_fake_lost_payload_state = 1; /* 'Lose' next video payload */
+            //g_decklink_fake_lost_payload_state = 1; /* After this frame, simulate an audio loss too. */
+            g_decklink_fake_lost_payload_state = 0; /* Don't drop audio in next frame, resume. */
             videoframe = NULL;
             char t[160];
             sprintf(t, "%s", ctime(&now));
