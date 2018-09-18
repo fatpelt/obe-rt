@@ -1774,7 +1774,7 @@ static void _usage(const char *prog, int exitcode)
 {
     printf("\nOpen Broadcast Encoder command line interface.\n");
     printf("Including Kernel Labs enhancements.\n");
-    printf("Version 1.9 (" GIT_VERSION ")\n");
+    printf("Version 1.10 (" GIT_VERSION ")\n");
     printf("x264 build#%d (%dbit support)\n", X264_BUILD, X264_BIT_DEPTH);
     printf("Decklink SDK %s\n", BLACKMAGIC_DECKLINK_API_VERSION_STRING);
     printf("\n");
