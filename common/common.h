@@ -44,7 +44,7 @@
 #include <common/queue.h>
 
 /* Enable some realtime debugging commands */
-#define DO_SET_VARIABLE 0
+#define DO_SET_VARIABLE 1
 
 #define MAX_DEVICES 1
 #define MAX_STREAMS 40
@@ -420,6 +420,7 @@ typedef struct
     obe_timecode_t timecode;
 
     int reset_obe;
+    int dup;
 } obe_raw_frame_t;
 
 typedef struct
