@@ -1577,19 +1577,42 @@ void obe_raw_frame_printf(obe_raw_frame_t *rf)
     printf("\n");
 }
 
+void obe_image_copy(obe_image_t *dst, obe_image_t *src)
+{
+	memcpy(dst, src, sizeof(obe_image_t));
+
+	uint32_t plane_len[4] = { 0 };
+	for (int i = src->planes - 1; i > 0; i--) {
+		plane_len[i - 1] = src->plane[i] - src->plane[i - 1];
+	}
+	if (src->planes == 3) {
+		plane_len[2] = plane_len[1];
+	}
+
+	uint32_t alloc_size = 0;
+	for (int i = 0; i < src->planes; i++)
+		alloc_size += plane_len[i];
+
+	for (int i = 0; i < src->planes; i++) {
+
+		if (i == 0 && src->plane[i]) {
+			dst->plane[i] = (uint8_t *)malloc(alloc_size);
+			memcpy(dst->plane[i], src->plane[i], alloc_size);
+		}
+		if (i > 0) {
+			dst->plane[i] = dst->plane[i - 1] + plane_len[i - 1];
+		}
+
+	}
+}
+
 obe_raw_frame_t *obe_raw_frame_copy(obe_raw_frame_t *frame)
 {
     obe_raw_frame_t *f = new_raw_frame();
 
     memcpy(f, frame, sizeof(*frame));
 
-    for (int i = 0; i < 1; i++) {
-        if (f->alloc_img.plane[i]) {
-            f->alloc_img.plane[i] = (uint8_t *)calloc(1, 4 * 1048576);
-            memcpy(f->alloc_img.plane[i], frame->alloc_img.plane[i],
-                f->alloc_img.width * f->alloc_img.height * 2);
-        }
-    }
+    obe_image_copy(&f->alloc_img, &frame->alloc_img);
 
     memcpy(&f->img, &f->alloc_img, sizeof(frame->alloc_img));
 
@@ -1605,6 +1628,8 @@ obe_raw_frame_t *obe_raw_frame_copy(obe_raw_frame_t *frame)
     } else {
         f->user_data = NULL;
     }
+
+//    obe_raw_frame_printf(f);
 
     return f;
 }
