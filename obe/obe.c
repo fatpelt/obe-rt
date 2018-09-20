@@ -1577,3 +1577,34 @@ void obe_raw_frame_printf(obe_raw_frame_t *rf)
     printf("\n");
 }
 
+obe_raw_frame_t *obe_raw_frame_copy(obe_raw_frame_t *frame)
+{
+    obe_raw_frame_t *f = new_raw_frame();
+
+    memcpy(f, frame, sizeof(*frame));
+
+    for (int i = 0; i < 1; i++) {
+        if (f->alloc_img.plane[i]) {
+            f->alloc_img.plane[i] = (uint8_t *)calloc(1, 4 * 1048576);
+            memcpy(f->alloc_img.plane[i], frame->alloc_img.plane[i],
+                f->alloc_img.width * f->alloc_img.height * 2);
+        }
+    }
+
+    memcpy(&f->img, &f->alloc_img, sizeof(frame->alloc_img));
+
+    if (f->num_user_data) {
+        f->user_data = (obe_user_data_t *)malloc(sizeof(obe_user_data_t) * f->num_user_data);
+        memcpy(f->user_data, frame->user_data, sizeof(obe_user_data_t) * f->num_user_data);
+
+        for (int i = 0; i < f->num_user_data; i++) {
+            f->user_data[i].data = (uint8_t *)malloc(frame->user_data[i].len);
+            memcpy(f->user_data[i].data, frame->user_data[i].data, f->user_data[i].len);
+        }
+
+    } else {
+        f->user_data = NULL;
+    }
+
+    return f;
+}

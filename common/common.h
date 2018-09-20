@@ -634,5 +634,6 @@ void sleep_input_clock( obe_t *h, int64_t i_delay );
 
 int get_non_display_location( int type );
 void obe_raw_frame_printf(obe_raw_frame_t *rf);
+obe_raw_frame_t *obe_raw_frame_copy(obe_raw_frame_t *frame);
 
 #endif
