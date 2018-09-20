@@ -58,7 +58,7 @@ extern "C"
 
 #define DECKLINK_VANC_LINES 100
 
-#define FRAME_CACHING 0
+#define FRAME_CACHING 1
 
 struct obe_to_decklink
 {
@@ -853,6 +853,9 @@ static void cache_video_frame(obe_raw_frame_t *frame)
 
 HRESULT DeckLinkCaptureDelegate::noVideoInputFrameArrived(IDeckLinkVideoInputFrame *videoframe, IDeckLinkAudioInputPacket *audioframe)
 {
+	if (!cached)
+		return S_OK;
+
 	decklink_ctx_t *decklink_ctx = &decklink_opts_->decklink_ctx;
  	BMDTimeValue frame_duration;
 	obe_t *h = decklink_ctx->h;
@@ -862,6 +865,7 @@ HRESULT DeckLinkCaptureDelegate::noVideoInputFrameArrived(IDeckLinkVideoInputFra
 	obe_clock_tick(h, (int64_t)decklink_ctx->stream_time);
 
 	obe_raw_frame_t *raw_frame = obe_raw_frame_copy(cached);
+	raw_frame->dup = 1;
 	raw_frame->pts = decklink_ctx->stream_time;
 
 	BMDTimeValue packet_time;
@@ -870,6 +874,7 @@ HRESULT DeckLinkCaptureDelegate::noVideoInputFrameArrived(IDeckLinkVideoInputFra
 	avfm_set_pts_video(&raw_frame->avfm, decklink_ctx->stream_time);
 	avfm_set_pts_audio(&raw_frame->avfm, packet_time);
 	avfm_set_hw_received_time(&raw_frame->avfm);
+	//avfm_dump(&raw_frame->avfm);
 
 	printf("Injecting cached frame for time %" PRIi64 "\n", raw_frame->pts);
 
@@ -899,19 +904,9 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
 
 #if FRAME_CACHING
     { // Highly experimental, do not use.
-        static int g_cnt = 0;
-        g_cnt++;
-        int resendlast = 0;
-        if (videoframe) {
-            if (g_cnt > 100 && videoframe->GetFlags() & bmdFrameHasNoInputSource) {
-                printf("%s() %8d .. ", __func__, g_cnt);
-                printf("No source");
-                resendlast = 1;
-                printf("\n");
-            }
-        }
-        if (resendlast)
+        if (videoframe && videoframe->GetFlags() & bmdFrameHasNoInputSource) {
             return noVideoInputFrameArrived(videoframe, audioframe);
+        }
     }
 #endif
 
