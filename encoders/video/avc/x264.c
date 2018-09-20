@@ -333,7 +333,11 @@ printf("Malloc failed\n");
             break;
         }
         memcpy(avfm, &raw_frame->avfm, sizeof(raw_frame->avfm));
-        //avfm_dump(avfm);
+#if 0
+        if (raw_frame->dup)
+            printf("next frame is a dup\n");
+        avfm_dump(avfm);
+#endif
         pic.opaque = avfm;
         pic.param = NULL;
 
