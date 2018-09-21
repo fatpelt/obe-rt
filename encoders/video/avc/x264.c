@@ -374,7 +374,14 @@ printf("Malloc failed\n");
              * is disconnected, suggestedint a BM firmware bug.
              * We'll use the audio clock regardless, for both audio and video compressors.
              */
-            int64_t new_dts  = avfm->audio_pts + 24299700 - abs(coded_frame->real_dts - coded_frame->real_pts) + (2 * frame_duration);
+            int64_t new_dts = 0;
+            if (h->obe_system == OBE_SYSTEM_TYPE_LOWEST_LATENCY || h->obe_system == OBE_SYSTEM_TYPE_LOW_LATENCY) {
+                new_dts = avfm->audio_pts + 0 -
+                    abs(coded_frame->real_dts - coded_frame->real_pts) + (2 * frame_duration);
+            } else {
+                new_dts = avfm->audio_pts + 24299700 -
+                    abs(coded_frame->real_dts - coded_frame->real_pts) + (2 * frame_duration);
+            }
 
             /* We need to userstand, for this temporal frame, how much it varies from the dts. */
             int64_t pts_diff = coded_frame->real_dts - coded_frame->real_pts;

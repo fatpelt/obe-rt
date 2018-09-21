@@ -115,6 +115,7 @@ typedef struct
     int enable_vanc_cache;
     int enable_bitstream_audio;
     int enable_patch1;
+    int enable_los_exit_ms;
 } obe_input_t;
 
 /**** Stream Formats ****/
