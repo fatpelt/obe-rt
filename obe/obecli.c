@@ -1119,7 +1119,9 @@ void display_variables()
 {
     printf("sdi_input.fake_60sec_lost_payload = %d [%s]\n", g_decklink_fake_lost_payload,
         g_decklink_fake_lost_payload == 0 ? "disabled" : "enabled");
-    printf("sdi_input.monitor_hw_clocks = %d\n", g_decklink_monitor_hw_clocks);
+    printf("sdi_input.monitor_hw_clocks = %d [%s]\n",
+        g_decklink_monitor_hw_clocks,
+        g_decklink_monitor_hw_clocks == 0 ? "disabled" : "enabled");
     printf("sdi_input.fake_every_other_frame_lose_audio_payload = %d [%s]\n", g_decklink_fake_every_other_frame_lose_audio_payload,
         g_decklink_fake_every_other_frame_lose_audio_payload == 0 ? "disabled" : "enabled");
 
