@@ -920,14 +920,6 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
     BMDTimeValue frame_duration;
     time_t now = time(0);
 
-#if FRAME_CACHING
-    { // Highly experimental, do not use.
-        if (videoframe && videoframe->GetFlags() & bmdFrameHasNoInputSource) {
-            return noVideoInputFrameArrived(videoframe, audioframe);
-        }
-    }
-#endif
-
 #define MONITOR_HW_CLOCKS 0
 
 #if MONITOR_HW_CLOCKS
@@ -963,6 +955,14 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
 
         last_vtime = vtime;
         last_atime = atime;
+    }
+#endif
+
+#if FRAME_CACHING
+    { // Highly experimental, do not use.
+        if (videoframe && videoframe->GetFlags() & bmdFrameHasNoInputSource) {
+            return noVideoInputFrameArrived(videoframe, audioframe);
+        }
     }
 #endif
 
