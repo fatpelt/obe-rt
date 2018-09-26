@@ -872,7 +872,25 @@ HRESULT DeckLinkCaptureDelegate::noVideoInputFrameArrived(IDeckLinkVideoInputFra
 	audioframe->GetPacketTime(&packet_time, OBE_CLOCK);
 
 	avfm_set_pts_video(&raw_frame->avfm, decklink_ctx->stream_time);
-	avfm_set_pts_audio(&raw_frame->avfm, packet_time);
+
+	/* Normally we put the audio and the video clocks into the timing
+	 * avfm metadata, and downstream codecs can calculate their timing
+	 * from whichever clock they prefer. Generally speaking, that's the
+	 * audio clock - for both the video and the audio pipelines.
+	 * As long as everyone slaves of a single clock, no problem.
+	 * However, interesting observation. In the event of signal loss,
+	 * the BlackMagic SDK 10.8.5a continues to report proper video timing
+	 * intervals, but the audio clock goes wild and runs faster than
+	 * anticipated. The side effect of this, is that video frames (slaved
+	 * originally from the audio clock) get into the libmpegts mux and start
+	 * experiencing data loss. The ES going into libmpegts is fine, the
+	 * PES construction is fine, the output TS packets are properly aligned
+	 * and CC stamped, but data is lost.
+	 * The remedy, in LOS conditions, use the video clock as the audio clock
+	 * when building timing metadata.
+	 */
+	avfm_set_pts_audio(&raw_frame->avfm, decklink_ctx->stream_time);
+
 	avfm_set_hw_received_time(&raw_frame->avfm);
 	//avfm_dump(&raw_frame->avfm);
 
