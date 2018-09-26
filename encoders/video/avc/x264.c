@@ -355,6 +355,25 @@ static void *x264_start_encoder( void *ptr )
         pthread_mutex_unlock( &encoder->queue.mutex );
 
 #if 0
+	/* Useful debug code that caches the last raw_frame then compares it to
+         * the current frame. If its not identical then throw a warning. This is helpful
+         * when we're synthesizing frames due to LOS and we want to check that nobody
+         * has tampered with the current frame, it should be a ferfect match.
+         */
+        static obe_raw_frame_t *cached = NULL;
+        if (cached) {
+            if (obe_image_compare(&raw_frame->alloc_img, &cached->alloc_img) != 1) {
+                printf("X264 says image cached is bad\n");
+            }
+
+            cached->release_data(cached);
+            cached->release_frame(cached);
+            //obe_raw_frame_free(cached);
+        }
+        cached = obe_raw_frame_copy(raw_frame);
+#endif
+
+#if 0
         static int drop_count = 0;
         FILE *fh = fopen("/tmp/dropvideoframe.cmd", "rb");
         if (fh) {
@@ -442,6 +461,26 @@ printf("Malloc failed\n");
 
             pthread_mutex_unlock( &h->enc_smoothing_queue.mutex );
         }
+
+#if 0
+	/* Helpful code that caches x264_image_t objects before they go
+         * into the compressor. In theory, if we feed a static image A
+         * into the compressor, then the compressor should not touch or
+         * tamper with image A. Used this code to track down pixel glitching
+         * I was seeing (which turned out to be not related to x264 at all).
+         * Keeping the code, it will be occasionally useful.
+         */
+        static x264_picture_t *cached = NULL;
+        if (cached) {
+            if (x264_image_compare(&pic.img, &cached->img) != 1) {
+                printf("X264 says pic image cached is bad\n");
+            }
+
+            x264_picture_free(cached);
+        }
+
+        cached = x264_picture_copy(&pic);
+#endif
 
         frame_size = x264_encoder_encode( s, &nal, &i_nal, &pic, &pic_out );
 
