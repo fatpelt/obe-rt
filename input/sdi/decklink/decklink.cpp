@@ -839,6 +839,8 @@ time_t        g_decklink_fake_lost_payload_time = 0;
 static int    g_decklink_fake_lost_payload_interval = 60;
 static int    g_decklink_fake_lost_payload_state = 0;
 
+int           g_decklink_monitor_hw_clocks = 0;
+
 #if FRAME_CACHING
 static obe_raw_frame_t *cached = NULL;
 static void cache_video_frame(obe_raw_frame_t *frame)
@@ -920,9 +922,7 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
     BMDTimeValue frame_duration;
     time_t now = time(0);
 
-#define MONITOR_HW_CLOCKS 0
-
-#if MONITOR_HW_CLOCKS
+    if (g_decklink_monitor_hw_clocks)
     {
         static BMDTimeValue last_vtime = 0;
         static BMDTimeValue last_atime = 0;
@@ -951,12 +951,11 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
         if (last_atime && (adiff != 450000) && (adiff != 450562) && (adiff != 450563)) {
             printf("Bad audio interval\n");
         } else
-            printf("\r");
+            printf("\n");
 
         last_vtime = vtime;
         last_atime = atime;
-    }
-#endif
+    } /* if g_decklink_monitor_hw_clocks */
 
 #if FRAME_CACHING
     { // Highly experimental, do not use.

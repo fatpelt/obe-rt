@@ -1084,6 +1084,8 @@ static int set_outputs( char *command, obecli_command_t *child )
 }
 
 #if DO_SET_VARIABLE
+extern int g_decklink_monitor_hw_clocks;
+
 /* Case 1 */
 extern int g_decklink_fake_lost_payload;
 extern time_t g_decklink_fake_lost_payload_time;
@@ -1117,6 +1119,7 @@ void display_variables()
 {
     printf("sdi_input.fake_60sec_lost_payload = %d [%s]\n", g_decklink_fake_lost_payload,
         g_decklink_fake_lost_payload == 0 ? "disabled" : "enabled");
+    printf("sdi_input.monitor_hw_clocks = %d\n", g_decklink_monitor_hw_clocks);
     printf("sdi_input.fake_every_other_frame_lose_audio_payload = %d [%s]\n", g_decklink_fake_every_other_frame_lose_audio_payload,
         g_decklink_fake_every_other_frame_lose_audio_payload == 0 ? "disabled" : "enabled");
 
@@ -1173,6 +1176,9 @@ static int set_variable(char *command, obecli_command_t *child)
     if (strcasecmp(var, "sdi_input.fake_every_other_frame_lose_audio_payload") == 0) {
         g_decklink_fake_every_other_frame_lose_audio_payload = val;
         g_decklink_fake_every_other_frame_lose_audio_payload_time = 0;
+    } else
+    if (strcasecmp(var, "sdi_input.monitor_hw_clocks") == 0) {
+        g_decklink_monitor_hw_clocks = val;
     } else
     if (strcasecmp(var, "audio_encoder.ac3_offset_ms") == 0) {
         ac3_offset_ms = val;
