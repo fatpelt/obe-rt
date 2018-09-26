@@ -637,5 +637,7 @@ int get_non_display_location( int type );
 void obe_raw_frame_printf(obe_raw_frame_t *rf);
 obe_raw_frame_t *obe_raw_frame_copy(obe_raw_frame_t *frame);
 void obe_image_copy(obe_image_t *dst, obe_image_t *src);
+int obe_image_compare(obe_image_t *dst, obe_image_t *src);
+void obe_raw_frame_free(obe_raw_frame_t *frame);
 
 #endif

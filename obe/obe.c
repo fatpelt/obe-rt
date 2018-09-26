@@ -1577,6 +1577,63 @@ void obe_raw_frame_printf(obe_raw_frame_t *rf)
     printf("\n");
 }
 
+/* Return 1 if the images are byte for byte identical, else 0. */
+int obe_image_compare(obe_image_t *a, obe_image_t *b)
+{
+	/* Its OK for the plane addresses not to match, but the
+	 * plane contents (pixels) must match.... and the number
+	 * of planes, strides and CSC must be identical.
+	 */
+	{
+		obe_image_t x = *a;
+		for (int i = 0; i < 4; i++)
+			x.plane[i] = NULL;
+
+		obe_image_t y = *b;
+		for (int i = 0; i < 4; i++)
+			y.plane[i] = NULL;
+
+		if (memcmp(&x, &y, sizeof(y) != 0)) {
+			printf("core object doesn't match\n");
+			return 0;
+		}
+	}
+
+	uint32_t plane_len[2][4] = { { 0 } };
+	for (int j = 0; j < 2; j++) {
+		obe_image_t *p = a;
+		if (j == 1)
+			p = b;
+
+		for (int i = p->planes - 1; i > 0; i--) {
+			plane_len[j][i - 1] = p->plane[i] - p->plane[i - 1];
+		}
+		if (p->planes == 3) {
+			plane_len[j][2] = plane_len[j][1];
+		}
+	}
+
+	for (int i = 0; i < a->planes; i++) {
+		if (plane_len[0][i] != plane_len[1][i]) {
+			printf("plane lengths don't match\n");
+			return 0;
+		}
+	}
+
+	/* Plane sizes match, now compare the planes themselves. */
+
+	uint32_t alloc_size = 0;
+	for (int i = 0; i < a->planes; i++)
+		alloc_size += plane_len[0][i];
+
+	if (memcmp(a->plane[0], b->plane[0], alloc_size) != 0) {
+		printf("plane itself has changed\n");
+		return 0;
+	}
+
+	return 1; /* Perfect image copy. */
+}
+
 void obe_image_copy(obe_image_t *dst, obe_image_t *src)
 {
 	memcpy(dst, src, sizeof(obe_image_t));
@@ -1604,6 +1661,15 @@ void obe_image_copy(obe_image_t *dst, obe_image_t *src)
 		}
 
 	}
+}
+
+void obe_raw_frame_free(obe_raw_frame_t *frame)
+{
+	free(frame->alloc_img.plane[0]);
+	for (int i = 0; i < frame->num_user_data; i++)
+		free(frame->user_data[i].data);
+	free(frame->user_data);
+	free(frame);
 }
 
 obe_raw_frame_t *obe_raw_frame_copy(obe_raw_frame_t *frame)
