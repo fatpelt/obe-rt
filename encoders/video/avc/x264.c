@@ -166,6 +166,65 @@ printf("pic->img.i_csp = %d [%s] bits = %d\n",
     return 0;
 }
 
+static int x264_image_compare(x264_image_t *a, x264_image_t *b)
+{
+	uint32_t plane_len[4] = { 0 };
+	for (int i = a->i_plane - 1; i > 0; i--) {
+		plane_len[i - 1] = a->plane[i] - a->plane[i - 1];
+	}
+	if (a->i_plane == 3) {
+		plane_len[2] = plane_len[1];
+	}
+
+	uint32_t alloc_size = 0;
+	for (int i = 0; i < a->i_plane; i++)
+		alloc_size += plane_len[i];
+
+	if (memcmp(a->plane[0], b->plane[0], alloc_size) != 0)
+		return 0;
+
+	return 1; /* Perfect copy. */
+
+}
+
+static void x264_picture_free(x264_picture_t *pic)
+{
+	free(pic->img.plane[0]);
+	free(pic);
+}
+
+static x264_picture_t *x264_picture_copy(x264_picture_t *pic)
+{
+	x264_picture_t *p = malloc(sizeof(*p));
+	memcpy(p, pic, sizeof(*p));
+
+	uint32_t plane_len[4] = { 0 };
+	for (int i = pic->img.i_plane - 1; i > 0; i--) {
+		plane_len[i - 1] = pic->img.plane[i] - pic->img.plane[i - 1];
+	}
+	if (pic->img.i_plane == 3) {
+		plane_len[2] = plane_len[1];
+	}
+
+	uint32_t alloc_size = 0;
+	for (int i = 0; i < pic->img.i_plane; i++)
+		alloc_size += plane_len[i];
+
+        for (int i = 0; i < pic->img.i_plane; i++) {
+
+                if (i == 0 && pic->img.plane[i]) {
+                        p->img.plane[i] = (uint8_t *)malloc(alloc_size);
+                        memcpy(p->img.plane[i], pic->img.plane[i], alloc_size);
+                }
+                if (i > 0) {
+                        p->img.plane[i] = p->img.plane[i - 1] + plane_len[i - 1];
+                }
+
+        }
+
+	return p;
+}
+
 static void *x264_start_encoder( void *ptr )
 {
     obe_vid_enc_params_t *enc_params = ptr;
