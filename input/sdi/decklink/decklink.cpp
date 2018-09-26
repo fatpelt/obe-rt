@@ -792,6 +792,7 @@ static int wipeAudio(IDeckLinkAudioInputPacket *audioframe)
 }
 #endif
 
+#if 0
 static int countAudioChannelsWithPayload(IDeckLinkAudioInputPacket *audioframe)
 {
 	uint8_t *buf;
@@ -825,6 +826,7 @@ static int countAudioChannelsWithPayload(IDeckLinkAudioInputPacket *audioframe)
 
 	return cnt;
 }
+#endif
 #endif
 
 /* If enable, we drop every other audio payload from the input. */
