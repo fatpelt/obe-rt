@@ -1258,6 +1258,11 @@ int obe_start( obe_t *h )
                 else
                     h->output_streams[i].ts_opts.frames_per_pes = aud_enc_params->frames_per_pes = 1;
 
+                /* Determine whether we want the TWOLAME (only) audio encoder to rebase its time from the head of its fifo,
+                 * and reset bases its clock from the h/w every 100ms or so.
+                 */
+                aud_enc_params->use_fifo_head_timing = 0;
+
                 if( pthread_create( &h->encoders[h->num_encoders]->encoder_thread, NULL, audio_encoder.start_encoder, (void*)aud_enc_params ) < 0 )
                 {
                     fprintf( stderr, "Couldn't create encode thread \n" );

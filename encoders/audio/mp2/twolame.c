@@ -57,6 +57,10 @@ static void *start_encoder_mp2( void *ptr )
     AVAudioResampleContext *avr = NULL;
     AVFifoBuffer *fifo = NULL;
 
+    int64_t fifoHeadPTS = 0; /* Keeping track of the audio timestamp every time the fifo is empty. */
+    int64_t lastCodedFramePTS = 0; /* The codec is burst. We have to keep tabs on the audio pts and adjust to avoid dup pts. */
+    int64_t lastOutputFramePTS = 0; /* Last pts we output, we'll comare against future version to warn for discontinuities. */
+
     /* Lock the mutex until we verify parameters */
     pthread_mutex_lock( &encoder->queue.mutex );
 
@@ -197,6 +201,13 @@ static void *start_encoder_mp2( void *ptr )
 
         av_fifo_generic_write( fifo, output_buf, output_size, NULL );
 
+        /* If the fifo is empty, and the compressor created some payload,
+         * reset the audio timebase to batch the current latest audioframe.
+         */
+        if (output_size > 0 && av_fifo_size(fifo) == output_size) {
+            fifoHeadPTS = avfm.audio_pts;
+        }
+
         int framesProcessed = 0;
         while( av_fifo_size( fifo ) >= frame_size )
         {
@@ -208,6 +219,13 @@ static void *start_encoder_mp2( void *ptr )
             }
             av_fifo_generic_read( fifo, coded_frame->data, frame_size, NULL );
             memcpy(&coded_frame->avfm, &avfm, sizeof(avfm));
+
+            /* 648000 27MHz ticks equates to 24ms.
+             * 24ms is the smallest amount of time this audio codec and eject as compressed data.
+             * Hence, lowest latency means we get 24ms PES frames.
+             * Hence, normal latency is N * pes frames.
+             * OBE itself determines what N should be in various latency modes.
+             */
 
             /* In low latency configurations where the framerate (33ms) is larger than the audio interval (24ms),
              * during audio data wrapping conditions we have to prepare two audio output frames for a single video frame.
@@ -235,8 +253,22 @@ static void *start_encoder_mp2( void *ptr )
             /* The outgoing PTS is rounded and based on recent h/w clock, so massive leaps in
              * the h/w clock are automatically compensated for.
              * 648000 represents number of ticks in 27Mhz clock for 24ms, the smallest MP2 framesize we can deliver.
+             * One problem with taking the latest audio pts and using it regardless, is that it can create PTS gaps
+             * of 24 * n ms in poor signal conditions (such as when doing 4-5 frame injections). Instead,
+             * we'll make a not of the current audio time when the fifo is empty. The fifo is empty every 3-4 audio
+             * raw frames. From this, we'll add N *24ms from that fifoHeadPTS time. This keeps the PTS output
+             * at a very reliably 24 * n MS under many more rough signal circumstances.
              */
-            int64_t rounded_pts = av_rescale(coded_frame->avfm.audio_pts, OBE_CLOCK, 648000 * enc_params->frames_per_pes);
+
+            /* I think the fifo head timing is a better overall audio timing model, and we should consider moving to it
+             * in some future release. For the time beings its opt-in.
+             */
+            int64_t rounded_pts;
+            if (enc_params->use_fifo_head_timing == 0)
+                rounded_pts = av_rescale(coded_frame->avfm.audio_pts, OBE_CLOCK, 648000 * enc_params->frames_per_pes);
+            else
+                rounded_pts = av_rescale(fifoHeadPTS, OBE_CLOCK, 648000 * enc_params->frames_per_pes);
+
             rounded_pts /= OBE_CLOCK;
             rounded_pts *= (648000 * enc_params->frames_per_pes);
             coded_frame->pts = rounded_pts;
@@ -245,6 +277,19 @@ static void *start_encoder_mp2( void *ptr )
             coded_frame->random_access = 1; /* Every frame output is a random access point */
             coded_frame->type = CF_AUDIO;
 
+            if (enc_params->use_fifo_head_timing) {
+                if (coded_frame->pts == lastCodedFramePTS) {
+                    coded_frame->pts += (648000 * enc_params->frames_per_pes);
+                }
+                lastCodedFramePTS = coded_frame->pts;
+
+                if (lastOutputFramePTS + (648000 * enc_params->frames_per_pes) != coded_frame->pts) {
+                    printf("Output PTS discontinuity. Should be %" PRIi64 " was %" PRIi64 "\n",
+                        lastOutputFramePTS + (648000 * enc_params->frames_per_pes),
+                        coded_frame->pts);
+                }
+                lastOutputFramePTS = coded_frame->pts;
+            }
             add_to_queue( &h->mux_queue, coded_frame );
         }
     }

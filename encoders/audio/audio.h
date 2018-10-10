@@ -40,6 +40,12 @@ typedef struct
     int input_sample_format;
     int sample_rate;
     int frames_per_pes;
+
+    /* TODO: Only the MP2 codec observes and acts upon this choice.
+     *       Consider AC3, AAC and MP3 support also.
+     */
+    int use_fifo_head_timing;
+
 } obe_aud_enc_params_t;
 
 extern const obe_aud_enc_func_t twolame_encoder;
