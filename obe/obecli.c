@@ -1115,8 +1115,17 @@ extern int g_udp_output_drop_next_audio_packet;
 extern int g_udp_output_drop_next_packet;
 extern int g_udp_output_stall_packet_ms;
 
+/* LOS frame injection. */
+extern int g_decklink_inject_frame_enable;
+extern int g_decklink_injected_frame_count_max;
+extern int g_decklink_injected_frame_count;
+
 void display_variables()
 {
+    printf("sdi_input.inject_frame_enable = %d [%s]\n",
+        g_decklink_inject_frame_enable,
+        g_decklink_inject_frame_enable == 0 ? "disabled" : "enabled");
+    printf("sdi_input.inject_frame_count_max = %d\n", g_decklink_injected_frame_count_max);
     printf("sdi_input.fake_60sec_lost_payload = %d [%s]\n", g_decklink_fake_lost_payload,
         g_decklink_fake_lost_payload == 0 ? "disabled" : "enabled");
     printf("sdi_input.monitor_hw_clocks = %d [%s]\n",
@@ -1178,6 +1187,13 @@ static int set_variable(char *command, obecli_command_t *child)
     if (strcasecmp(var, "sdi_input.fake_every_other_frame_lose_audio_payload") == 0) {
         g_decklink_fake_every_other_frame_lose_audio_payload = val;
         g_decklink_fake_every_other_frame_lose_audio_payload_time = 0;
+    } else
+    if (strcasecmp(var, "sdi_input.inject_frame_enable") == 0) {
+        g_decklink_injected_frame_count = 0;
+        g_decklink_inject_frame_enable = val;
+    } else
+    if (strcasecmp(var, "sdi_input.inject_frame_count_max") == 0) {
+        g_decklink_injected_frame_count_max = val;
     } else
     if (strcasecmp(var, "sdi_input.monitor_hw_clocks") == 0) {
         g_decklink_monitor_hw_clocks = val;

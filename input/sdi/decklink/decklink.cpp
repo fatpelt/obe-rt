@@ -58,8 +58,6 @@ extern "C"
 
 #define DECKLINK_VANC_LINES 100
 
-#define FRAME_CACHING 1
-
 struct obe_to_decklink
 {
     int obe_name;
@@ -549,9 +547,7 @@ public:
     }
 
     virtual HRESULT STDMETHODCALLTYPE VideoInputFrameArrived(IDeckLinkVideoInputFrame*, IDeckLinkAudioInputPacket*);
-#if FRAME_CACHING
     HRESULT STDMETHODCALLTYPE noVideoInputFrameArrived(IDeckLinkVideoInputFrame*, IDeckLinkAudioInputPacket*);
-#endif
 
 private:
     pthread_mutex_t ref_mutex_;
@@ -843,7 +839,10 @@ static int    g_decklink_fake_lost_payload_state = 0;
 
 int           g_decklink_monitor_hw_clocks = 0;
 
-#if FRAME_CACHING
+int           g_decklink_injected_frame_count = 0;
+int           g_decklink_injected_frame_count_max = 600;
+int           g_decklink_inject_frame_enable = 0;
+
 static obe_raw_frame_t *cached = NULL;
 static void cache_video_frame(obe_raw_frame_t *frame)
 {
@@ -859,6 +858,17 @@ HRESULT DeckLinkCaptureDelegate::noVideoInputFrameArrived(IDeckLinkVideoInputFra
 {
 	if (!cached)
 		return S_OK;
+
+	g_decklink_injected_frame_count++;
+	if (g_decklink_injected_frame_count > g_decklink_injected_frame_count_max) {
+            char msg[128];
+            sprintf(msg, "Decklink card index %i: More than %d frames were injected, aborting.\n",
+                decklink_opts_->card_idx,
+                g_decklink_injected_frame_count_max);
+            syslog(LOG_ERR, msg);
+            fprintf(stderr, msg);
+            exit(1);
+        }
 
 	decklink_ctx_t *decklink_ctx = &decklink_opts_->decklink_ctx;
  	BMDTimeValue frame_duration;
@@ -896,15 +906,14 @@ HRESULT DeckLinkCaptureDelegate::noVideoInputFrameArrived(IDeckLinkVideoInputFra
 	avfm_set_pts_audio(&raw_frame->avfm, decklink_ctx->stream_time);
 
 	avfm_set_hw_received_time(&raw_frame->avfm);
+#if 1
 	//avfm_dump(&raw_frame->avfm);
-
-	printf("Injecting cached frame for time %" PRIi64 "\n", raw_frame->pts);
-
+	printf("Injecting cached frame %d for time %" PRIi64 "\n", g_decklink_injected_frame_count, raw_frame->pts);
+#endif
 	add_to_filter_queue(h, raw_frame);
 
 	return S_OK;
 }
-#endif
 
 HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFrame *videoframe, IDeckLinkAudioInputPacket *audioframe )
 {
@@ -938,12 +947,13 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
            audioframe->GetPacketTime(&atime, OBE_CLOCK);
         }
 
-        printf("vtime %" PRIi64 ":%" PRIi64 "  atime %" PRIi64 ":%" PRIi64 "  vduration %" PRIi64 "                ",
+        printf("vtime %" PRIi64 ":%" PRIi64 "  atime %" PRIi64 ":%" PRIi64 "  vduration %" PRIi64 "                a-vdiff: %" PRIi64,
             vtime,
             vtime - last_vtime,
             atime,
             atime - last_atime,
-            vframe_duration);
+            vframe_duration,
+            atime - vtime);
 
         BMDTimeValue adiff = atime - last_atime;
 
@@ -959,13 +969,11 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
         last_atime = atime;
     } /* if g_decklink_monitor_hw_clocks */
 
-#if FRAME_CACHING
-    { // Highly experimental, do not use.
+    if (g_decklink_inject_frame_enable) {
         if (videoframe && videoframe->GetFlags() & bmdFrameHasNoInputSource) {
             return noVideoInputFrameArrived(videoframe, audioframe);
         }
     }
-#endif
 
 #if DO_SET_VARIABLE
     if (g_decklink_fake_every_other_frame_lose_audio_payload) {
@@ -1028,17 +1036,15 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
             g_decklink_fake_lost_payload_time = now + g_decklink_fake_lost_payload_interval;
             //g_decklink_fake_lost_payload_state = 1; /* After this frame, simulate an audio loss too. */
             g_decklink_fake_lost_payload_state = 0; /* Don't drop audio in next frame, resume. */
-#if FRAME_CACHING
-#else
-            videoframe = NULL;
-#endif
+
             char t[160];
             sprintf(t, "%s", ctime(&now));
             t[strlen(t) - 1] = 0;
             printf("%s -- Simulating video loss\n", t);
-#if FRAME_CACHING
-            return noVideoInputFrameArrived(videoframe, audioframe);
-#endif
+            if (g_decklink_inject_frame_enable)
+                return noVideoInputFrameArrived(videoframe, audioframe);
+            else
+                videoframe = NULL;
         } else
         if (g_decklink_fake_lost_payload_state == 1) {
             audioframe = NULL;
@@ -1173,18 +1179,13 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
     {
         if( videoframe->GetFlags() & bmdFrameHasNoInputSource )
         {
-#if FRAME_CACHING
-            char msg[256];
-            sprintf(msg, "Decklink card index %i: No input signal detected", decklink_opts_->card_idx);
-            syslog(LOG_ERR, msg);
-            printf("%s\n", msg);
-#else
             syslog( LOG_ERR, "Decklink card index %i: No input signal detected", decklink_opts_->card_idx );
-#endif
             return S_OK;
         }
         else if (decklink_opts_->probe && decklink_ctx->audio_pairs[0].smpte337_frames_written > 6)
             decklink_opts_->probe_success = 1;
+
+        g_decklink_injected_frame_count = 0;
 
         /* use SDI ticks as clock source */
         videoframe->GetStreamTime(&decklink_ctx->stream_time, &frame_duration, OBE_CLOCK);
@@ -1205,9 +1206,11 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
                        decklink_opts_->card_idx,
                        (cur_frame_time - decklink_ctx->last_frame_time) / 1000 );
 
-                pthread_mutex_lock( &h->drop_mutex );
-                h->video_encoder_drop = h->audio_encoder_drop = h->mux_drop = 1;
-                pthread_mutex_unlock( &h->drop_mutex );
+                if (g_decklink_inject_frame_enable == 0) {
+                    pthread_mutex_lock(&h->drop_mutex);
+                    h->video_encoder_drop = h->audio_encoder_drop = h->mux_drop = 1;
+                    pthread_mutex_unlock(&h->drop_mutex);
+                }
             }
 
             decklink_ctx->last_frame_time = cur_frame_time;
@@ -1445,9 +1448,8 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
             avfm_set_hw_received_time(&raw_frame->avfm);
             //avfm_dump(&raw_frame->avfm);
 
-#if FRAME_CACHING
-            cache_video_frame(raw_frame);
-#endif
+            if (g_decklink_inject_frame_enable)
+                cache_video_frame(raw_frame);
 
             if( add_to_filter_queue( h, raw_frame ) < 0 )
                 goto fail;
