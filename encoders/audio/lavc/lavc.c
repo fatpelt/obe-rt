@@ -61,6 +61,10 @@ static void *start_encoder( void *ptr )
     char is_latm[2];
     uint8_t *audio_planes[8] = { NULL };
 
+    if (enc_params->use_fifo_head_timing) {
+        fprintf(stderr, "Warning: LAVC encoder does not support the use_fifo_head_timing mode\n");
+    }
+
     avcodec_register_all();
 
     codec = avcodec_alloc_context3( NULL );
