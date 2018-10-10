@@ -278,6 +278,7 @@ typedef struct
     int enable_vanc_cache;
     int enable_bitstream_audio;
     int enable_patch1;
+    int enable_los_exit_ms;
     int enable_frame_injection;
 
     /* Output */
@@ -1200,18 +1201,26 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
             if( cur_frame_time - decklink_ctx->last_frame_time >= SDI_MAX_DELAY )
             {
                 //system("/storage/dev/DEKTEC-DTU351/DTCOLLECTOR/obe-error.sh");
-                syslog(LOG_WARNING, "Decklink card index %i: No frame received for %"PRIi64" ms",
-                       decklink_opts_->card_idx,
-                       (cur_frame_time - decklink_ctx->last_frame_time) / 1000 );
-                printf("Decklink card index %i: No frame received for %"PRIi64" ms",
-                       decklink_opts_->card_idx,
-                       (cur_frame_time - decklink_ctx->last_frame_time) / 1000 );
+                int noFrameMS = (cur_frame_time - decklink_ctx->last_frame_time) / 1000;
+
+                char msg[128];
+                sprintf(msg, "Decklink card index %i: No frame received for %"PRIi64" ms", decklink_opts_->card_idx, noFrameMS);
+                syslog(LOG_WARNING, msg);
+                printf("%s\n", msg);
+
+                if (OPTION_ENABLED_(los_exit_ms) && noFrameMS >= OPTION_ENABLED_(los_exit_ms)) {
+                    sprintf(msg, "Terminating encoder as enable_los_exit_ms is active.");
+                    syslog(LOG_WARNING, msg);
+                    printf("%s\n", msg);
+                    exit(0);
+                }
 
                 if (g_decklink_inject_frame_enable == 0) {
                     pthread_mutex_lock(&h->drop_mutex);
                     h->video_encoder_drop = h->audio_encoder_drop = h->mux_drop = 1;
                     pthread_mutex_unlock(&h->drop_mutex);
                 }
+
             }
 
             decklink_ctx->last_frame_time = cur_frame_time;
@@ -2206,6 +2215,7 @@ static void *probe_stream( void *ptr )
     decklink_opts->enable_vanc_cache = user_opts->enable_vanc_cache;
     decklink_opts->enable_bitstream_audio = user_opts->enable_bitstream_audio;
     decklink_opts->enable_patch1 = user_opts->enable_patch1;
+    decklink_opts->enable_los_exit_ms = user_opts->enable_los_exit_ms;
     decklink_opts->enable_frame_injection = user_opts->enable_frame_injection;
 
     decklink_opts->probe = non_display_parser->probe = 1;
@@ -2422,6 +2432,7 @@ static void *open_input( void *ptr )
     decklink_opts->enable_vanc_cache = user_opts->enable_vanc_cache;
     decklink_opts->enable_bitstream_audio = user_opts->enable_bitstream_audio;
     decklink_opts->enable_patch1 = user_opts->enable_patch1;
+    decklink_opts->enable_los_exit_ms = user_opts->enable_los_exit_ms;
     decklink_opts->enable_frame_injection = user_opts->enable_frame_injection;
 
     decklink_ctx = &decklink_opts->decklink_ctx;
