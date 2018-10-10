@@ -994,6 +994,9 @@ int obe_setup_output( obe_t *h, obe_output_opts_t *output_opts )
     return 0;
 }
 
+/* LOS frame injection. */
+extern int g_decklink_inject_frame_enable;
+
 int obe_start( obe_t *h )
 {
     obe_int_input_stream_t  *input_stream;
@@ -1261,7 +1264,10 @@ int obe_start( obe_t *h )
                 /* Determine whether we want the TWOLAME (only) audio encoder to rebase its time from the head of its fifo,
                  * and reset bases its clock from the h/w every 100ms or so.
                  */
-                aud_enc_params->use_fifo_head_timing = 0;
+                if (g_decklink_inject_frame_enable)
+                    aud_enc_params->use_fifo_head_timing = 1;
+                else
+                    aud_enc_params->use_fifo_head_timing = 0;
 
                 if( pthread_create( &h->encoders[h->num_encoders]->encoder_thread, NULL, audio_encoder.start_encoder, (void*)aud_enc_params ) < 0 )
                 {
