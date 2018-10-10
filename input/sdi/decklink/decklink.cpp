@@ -278,6 +278,7 @@ typedef struct
     int enable_vanc_cache;
     int enable_bitstream_audio;
     int enable_patch1;
+    int enable_frame_injection;
 
     /* Output */
     int probe_success;
@@ -1842,6 +1843,11 @@ static int open_card( decklink_opts_t *decklink_opts )
         }
     }
 
+    if (OPTION_ENABLED(frame_injection)) {
+        fprintf(stdout, "Enabling option frame injection\n");
+        g_decklink_inject_frame_enable = 1;
+    }
+
     if (OPTION_ENABLED(scte35)) {
         fprintf(stdout, "Enabling option SCTE35\n");
     } else
@@ -2200,6 +2206,7 @@ static void *probe_stream( void *ptr )
     decklink_opts->enable_vanc_cache = user_opts->enable_vanc_cache;
     decklink_opts->enable_bitstream_audio = user_opts->enable_bitstream_audio;
     decklink_opts->enable_patch1 = user_opts->enable_patch1;
+    decklink_opts->enable_frame_injection = user_opts->enable_frame_injection;
 
     decklink_opts->probe = non_display_parser->probe = 1;
 
@@ -2415,6 +2422,7 @@ static void *open_input( void *ptr )
     decklink_opts->enable_vanc_cache = user_opts->enable_vanc_cache;
     decklink_opts->enable_bitstream_audio = user_opts->enable_bitstream_audio;
     decklink_opts->enable_patch1 = user_opts->enable_patch1;
+    decklink_opts->enable_frame_injection = user_opts->enable_frame_injection;
 
     decklink_ctx = &decklink_opts->decklink_ctx;
 
