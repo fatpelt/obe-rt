@@ -252,11 +252,6 @@ typedef struct
 #endif
 #define MAX_AUDIO_PAIRS 8
     struct audio_pair_s audio_pairs[MAX_AUDIO_PAIRS];
-
-    /* Detect and reset basic on mussing audio. */
-    time_t ma_window_start;
-    int    ma_window_seconds;
-    int    ma_window_count;
 } decklink_ctx_t;
 
 typedef struct
@@ -1068,20 +1063,6 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
         printf("Decklink card index %i: missing audio (%p) or video (%p)",
             decklink_opts_->card_idx,
             audioframe, videoframe);
-
-        if (decklink_ctx->ma_window_start + decklink_ctx->ma_window_seconds < time(0)) {
-            syslog(LOG_ERR, "Decklink card index %i: audio loss window opens.\n", decklink_opts_->card_idx);
-            printf("Decklink card index %i: audio loss window opens.\n", decklink_opts_->card_idx);
-            decklink_ctx->ma_window_start = time(0);
-            decklink_ctx->ma_window_count = 0;
-        }
-        if (decklink_ctx->ma_window_start + decklink_ctx->ma_window_seconds >= time(0)) {
-            if (decklink_ctx->ma_window_count++ >= 30) {
-                syslog(LOG_ERR, "Decklink card index %i: audio loss issue, terminating.\n", decklink_opts_->card_idx);
-                printf("Decklink card index %i: audio loss issue, terminating.\n", decklink_opts_->card_idx);
-                exit(0);
-            }
-        }
 
         return S_OK;
     }
@@ -1905,8 +1886,6 @@ static int open_card( decklink_opts_t *decklink_opts )
     decklink_ctx->codec->release_buffer = obe_release_buffer;
     decklink_ctx->codec->reget_buffer = obe_reget_buffer;
     decklink_ctx->codec->flags |= CODEC_FLAG_EMU_EDGE;
-    decklink_ctx->ma_window_start = 0;
-    decklink_ctx->ma_window_seconds = 3;
 
     /* TODO: setup custom strides */
     if( avcodec_open2( decklink_ctx->codec, decklink_ctx->dec, NULL ) < 0 )
