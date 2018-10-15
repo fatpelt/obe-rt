@@ -1060,10 +1060,6 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
         syslog(LOG_ERR, "Decklink card index %i: missing audio (%p) or video (%p)",
             decklink_opts_->card_idx,
             audioframe, videoframe);
-        printf("Decklink card index %i: missing audio (%p) or video (%p)",
-            decklink_opts_->card_idx,
-            audioframe, videoframe);
-
         return S_OK;
     }
 
