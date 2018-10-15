@@ -110,7 +110,6 @@ static void *encoder_start_smoothing( void *ptr )
             {
                 h->enc_smoothing_buffer_complete = 1;
                 start_dts = -1;
-                printf("%s() resetting start_dts to -1\n", __func__);
             }
             else
             {
@@ -138,7 +137,6 @@ static void *encoder_start_smoothing( void *ptr )
         if( start_dts == -1 )
         {
             start_dts = coded_frame->real_dts;
-            printf("%s() resetting start_dts to %" PRIi64 "\n", __func__, start_dts);
             /* Wait until the next clock tick */
             while( last_clock == h->obe_clock_last_pts && !h->cancel_enc_smoothing_thread )
                 pthread_cond_wait( &h->obe_clock_cv, &h->obe_clock_mutex );
