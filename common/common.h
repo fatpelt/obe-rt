@@ -420,7 +420,6 @@ typedef struct
     obe_timecode_t timecode;
 
     int reset_obe;
-    int dup;
 } obe_raw_frame_t;
 
 typedef struct

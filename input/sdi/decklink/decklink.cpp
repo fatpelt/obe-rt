@@ -876,7 +876,6 @@ HRESULT DeckLinkCaptureDelegate::noVideoInputFrameArrived(IDeckLinkVideoInputFra
 	obe_clock_tick(h, (int64_t)decklink_ctx->stream_time);
 
 	obe_raw_frame_t *raw_frame = obe_raw_frame_copy(cached);
-	raw_frame->dup = 1;
 	raw_frame->pts = decklink_ctx->stream_time;
 
 	BMDTimeValue packet_time;
