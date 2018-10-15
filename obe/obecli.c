@@ -1890,7 +1890,7 @@ static void _usage(const char *prog, int exitcode)
     printf("Including Kernel Labs enhancements.\n");
 
     char msg[128];
-    sprintf(msg, "Version 1.11 (" GIT_VERSION ")");
+    sprintf(msg, "Version 1.12 (" GIT_VERSION ")");
     printf("%s\n", msg);
     syslog(LOG_INFO, msg);
 
