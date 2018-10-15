@@ -1180,7 +1180,7 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
                 int noFrameMS = (cur_frame_time - decklink_ctx->last_frame_time) / 1000;
 
                 char msg[128];
-                sprintf(msg, "Decklink card index %i: No frame received for %"PRIi64" ms", decklink_opts_->card_idx, noFrameMS);
+                sprintf(msg, "Decklink card index %i: No frame received for %d ms", decklink_opts_->card_idx, noFrameMS);
                 syslog(LOG_WARNING, msg);
                 printf("%s\n", msg);
 
