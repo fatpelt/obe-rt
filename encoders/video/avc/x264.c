@@ -26,8 +26,23 @@
 #include <libavutil/mathematics.h>
 
 #define DEBUG_CODEC_TIMING 0
+#define MODULE "[x264]: "
 
 int64_t cpb_removal_time = 0;
+
+#define SERIALIZE_CODED_FRAMES 0
+#if SERIALIZE_CODED_FRAMES
+static void serialize_coded_frame(obe_coded_frame_t *cf)
+{
+    static FILE *fh = NULL;
+    if (!fh) {
+        fh = fopen("/storage/dev/x264.cf", "wb");
+        printf("Wwarning -- X264 coded frames will persist to disk\n");
+    }
+    if (fh)
+        coded_frame_serializer_write(fh, cf);
+}
+#endif
 
 static void x264_logger( void *p_unused, int i_level, const char *psz_fmt, va_list arg )
 {
@@ -215,6 +230,25 @@ static void *x264_start_encoder( void *ptr )
         pthread_mutex_unlock( &encoder->queue.mutex );
 
 #if 0
+	/* Useful debug code that caches the last raw_frame then compares it to
+         * the current frame. If its not identical then throw a warning. This is helpful
+         * when we're synthesizing frames due to LOS and we want to check that nobody
+         * has tampered with the current frame, it should be a ferfect match.
+         */
+        static obe_raw_frame_t *cached = NULL;
+        if (cached) {
+            if (obe_image_compare(&raw_frame->alloc_img, &cached->alloc_img) != 1) {
+                printf("X264 says image cached is bad\n");
+            }
+
+            cached->release_data(cached);
+            cached->release_frame(cached);
+            //obe_raw_frame_free(cached);
+        }
+        cached = obe_raw_frame_copy(raw_frame);
+#endif
+
+#if 0
         static int drop_count = 0;
         FILE *fh = fopen("/tmp/dropvideoframe.cmd", "rb");
         if (fh) {
@@ -252,7 +286,11 @@ printf("Malloc failed\n");
             break;
         }
         memcpy(avfm, &raw_frame->avfm, sizeof(raw_frame->avfm));
-        //avfm_dump(avfm);
+#if 0
+        if (raw_frame->dup)
+            printf("next frame is a dup\n");
+        avfm_dump(avfm);
+#endif
         pic.opaque = avfm;
         pic.param = NULL;
 
@@ -299,6 +337,26 @@ printf("Malloc failed\n");
             pthread_mutex_unlock( &h->enc_smoothing_queue.mutex );
         }
 
+#if 0
+	/* Helpful code that caches x264_image_t objects before they go
+         * into the compressor. In theory, if we feed a static image A
+         * into the compressor, then the compressor should not touch or
+         * tamper with image A. Used this code to track down pixel glitching
+         * I was seeing (which turned out to be not related to x264 at all).
+         * Keeping the code, it will be occasionally useful.
+         */
+        static x264_picture_t *cached = NULL;
+        if (cached) {
+            if (x264_image_compare(&pic.img, &cached->img) != 1) {
+                printf("X264 says pic image cached is bad\n");
+            }
+
+            x264_picture_free(cached);
+        }
+
+        cached = x264_picture_copy(&pic);
+#endif
+
         frame_size = x264_encoder_encode( s, &nal, &i_nal, &pic, &pic_out );
 
         arrival_time = raw_frame->arrival_time;
@@ -324,6 +382,14 @@ printf("Malloc failed\n");
             memcpy( coded_frame->data, nal[0].p_payload, frame_size );
             coded_frame->type = CF_VIDEO;
             coded_frame->len = frame_size;
+
+#if 0
+static FILE *fh = NULL;
+if (fh == NULL)
+  fh = fopen("/tmp/x264.nals", "wb");
+if (fh)
+  fwrite(coded_frame->data, 1, frame_size, fh);
+#endif
 
             /* We've detected video frame loss that wasn't related to an upstream signal loss.
              * ensure we pass that data to the mux.
@@ -440,11 +506,18 @@ printf("Malloc failed\n");
             if( h->obe_system == OBE_SYSTEM_TYPE_LOWEST_LATENCY || h->obe_system == OBE_SYSTEM_TYPE_LOW_LATENCY )
             {
                 coded_frame->arrival_time = arrival_time;
+#if SERIALIZE_CODED_FRAMES
+                serialize_coded_frame(coded_frame);
+#endif
                 add_to_queue( &h->mux_queue, coded_frame );
                 //printf("\n Encode Latency %"PRIi64" \n", obe_mdate() - coded_frame->arrival_time );
             }
-            else
+            else {
+#if SERIALIZE_CODED_FRAMES
+                serialize_coded_frame(coded_frame);
+#endif
                 add_to_queue( &h->enc_smoothing_queue, coded_frame );
+            }
         }
      }
 

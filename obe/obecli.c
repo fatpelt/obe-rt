@@ -34,6 +34,8 @@
 
 #include <readline/readline.h>
 #include <readline/history.h>
+#include <libavresample/avresample.h>
+#include <libmpegts.h>
 
 #include "obe.h"
 #include "obecli.h"
@@ -87,7 +89,8 @@ static const char * entropy_modes[] = { "cabac", "cavlc", NULL };
 
 static const char * system_opts[] = { "system-type", "max-probe-time", NULL };
 static const char * input_opts[]  = { "location", "card-idx", "video-format", "video-connection", "audio-connection",
-                                      "smpte2038", "scte35", "vanc-cache", "bitstream-audio", "patch1", "los-exit-ms", NULL };
+                                      "smpte2038", "scte35", "vanc-cache", "bitstream-audio", "patch1", "los-exit-ms",
+                                      "frame-injection", NULL };
 static const char * add_opts[] =    { "type" };
 /* TODO: split the stream options into general options, video options, ts options */
 static const char * stream_opts[] = { "action", "format",
@@ -112,6 +115,7 @@ static const char * stream_opts[] = { "action", "format",
                                       "preset-name", /* 41 */
                                       "entropy", /* 42 */
                                       "audio-offset", /* 43 */
+                                      "video-codec", /* 44 */
                                       NULL };
 
 static const char * muxer_opts[]  = { "ts-type", "cbr", "ts-muxrate", "passthrough", "ts-id", "program-num", "pmt-pid", "pcr-pid",
@@ -544,6 +548,7 @@ static int set_input( char *command, obecli_command_t *child )
         char *bitstream_audio = obe_get_option( input_opts[8], opts );
         char *patch1 = obe_get_option( input_opts[9], opts );
         char *los_exit_ms = obe_get_option( input_opts[10], opts );
+        char *frame_injection = obe_get_option(input_opts[11], opts);
 
         FAIL_IF_ERROR( video_format && ( check_enum_value( video_format, input_video_formats ) < 0 ),
                        "Invalid video format\n" );
@@ -564,6 +569,7 @@ static int set_input( char *command, obecli_command_t *child )
              strcpy( cli.input.location, location );
         }
 
+        cli.input.enable_frame_injection = obe_otoi(frame_injection, cli.input.enable_frame_injection);
         cli.input.enable_patch1 = obe_otoi( patch1, cli.input.enable_patch1 );
         cli.input.enable_bitstream_audio = obe_otoi( bitstream_audio, cli.input.enable_bitstream_audio );
         cli.input.enable_smpte2038 = obe_otoi( smpte2038, cli.input.enable_smpte2038 );
@@ -669,6 +675,30 @@ static int set_stream( char *command, obecli_command_t *child )
             const char *preset_name  = obe_get_option( stream_opts[41], opts );
             const char *entropy_mode = obe_get_option( stream_opts[42], opts );
             const char *audio_offset = obe_get_option( stream_opts[43], opts );
+            const char *video_codec = obe_get_option( stream_opts[44], opts );
+
+            int video_codec_id = 0; /* AVC */
+            if (video_codec) {
+                if (strcasecmp(video_codec, "AVC") == 0)
+                    video_codec_id = 0; /* AVC */
+#if HAVE_X265_H
+                else
+                if (strcasecmp(video_codec, "HEVC") == 0)
+                    video_codec_id = 1; /* HEVC */
+#endif
+#if HAVE_VA_VA_H
+                else
+                if (strcasecmp(video_codec, "AVC_VAAPI") == 0)
+                    video_codec_id = 2; /* AVC via VAAPI */
+                else
+                if (strcasecmp(video_codec, "HEVC_VAAPI") == 0)
+                    video_codec_id = 3; /* HEVC via VAAPI */
+#endif
+                else {
+                    fprintf(stderr, "video codec selection is invalid\n" );
+                    return -1;
+                }
+            }
 
             if( input_stream->stream_type == STREAM_TYPE_VIDEO )
             {
@@ -736,7 +766,20 @@ static int set_stream( char *command, obecli_command_t *child )
 
                 /* Set it to encode by default */
                 cli.output_streams[output_stream_id].stream_action = STREAM_ENCODE;
-                cli.output_streams[output_stream_id].stream_format = VIDEO_AVC;
+
+                if (video_codec_id == 0) {
+                    cli.output_streams[output_stream_id].stream_format = VIDEO_AVC;
+                } else
+                if (video_codec_id == 1) {
+                    cli.output_streams[output_stream_id].stream_format = VIDEO_HEVC_X265;
+                } else
+                if (video_codec_id == 2) {
+                    cli.output_streams[output_stream_id].stream_format = VIDEO_AVC_VAAPI;
+                } else
+                if (video_codec_id == 3) {
+                    cli.output_streams[output_stream_id].stream_format = VIDEO_HEVC_VAAPI;
+                }
+
                 avc_param->rc.i_vbv_max_bitrate = obe_otoi( vbv_maxrate, 0 );
                 avc_param->rc.i_vbv_buffer_size = obe_otoi( vbv_bufsize, 0 );
                 avc_param->rc.i_bitrate         = obe_otoi( bitrate, 0 );
@@ -1042,6 +1085,8 @@ static int set_outputs( char *command, obecli_command_t *child )
 }
 
 #if DO_SET_VARIABLE
+extern int g_decklink_monitor_hw_clocks;
+
 /* Case 1 */
 extern int g_decklink_fake_lost_payload;
 extern time_t g_decklink_fake_lost_payload_time;
@@ -1065,10 +1110,28 @@ extern int64_t g_mux_smoother_last_total_item_size;
 extern int64_t g_mux_smoother_fifo_pcr_size;
 extern int64_t g_mux_smoother_fifo_data_size;
 
+/* UDP Packet output */
+extern int g_udp_output_drop_next_video_packet;
+extern int g_udp_output_drop_next_audio_packet;
+extern int g_udp_output_drop_next_packet;
+extern int g_udp_output_stall_packet_ms;
+
+/* LOS frame injection. */
+extern int g_decklink_inject_frame_enable;
+extern int g_decklink_injected_frame_count_max;
+extern int g_decklink_injected_frame_count;
+
 void display_variables()
 {
+    printf("sdi_input.inject_frame_enable = %d [%s]\n",
+        g_decklink_inject_frame_enable,
+        g_decklink_inject_frame_enable == 0 ? "disabled" : "enabled");
+    printf("sdi_input.inject_frame_count_max = %d\n", g_decklink_injected_frame_count_max);
     printf("sdi_input.fake_60sec_lost_payload = %d [%s]\n", g_decklink_fake_lost_payload,
         g_decklink_fake_lost_payload == 0 ? "disabled" : "enabled");
+    printf("sdi_input.monitor_hw_clocks = %d [%s]\n",
+        g_decklink_monitor_hw_clocks,
+        g_decklink_monitor_hw_clocks == 0 ? "disabled" : "enabled");
     printf("sdi_input.fake_every_other_frame_lose_audio_payload = %d [%s]\n", g_decklink_fake_every_other_frame_lose_audio_payload,
         g_decklink_fake_every_other_frame_lose_audio_payload == 0 ? "disabled" : "enabled");
 
@@ -1089,6 +1152,14 @@ void display_variables()
         g_mux_smoother_fifo_pcr_size);
     printf("mux_smoother.fifo_data_size        = %" PRIi64 " (bytes)\n",
         g_mux_smoother_fifo_data_size);
+    printf("udp_output.drop_next_video_packet  = %d\n",
+        g_udp_output_drop_next_video_packet);
+    printf("udp_output.drop_next_audio_packet  = %d\n",
+        g_udp_output_drop_next_audio_packet);
+    printf("udp_output.drop_next_packet  = %d\n",
+        g_udp_output_drop_next_packet);
+    printf("udp_output.stall_packet_ms  = %d\n",
+        g_udp_output_stall_packet_ms);
 
 }
 
@@ -1118,8 +1189,30 @@ static int set_variable(char *command, obecli_command_t *child)
         g_decklink_fake_every_other_frame_lose_audio_payload = val;
         g_decklink_fake_every_other_frame_lose_audio_payload_time = 0;
     } else
+    if (strcasecmp(var, "sdi_input.inject_frame_enable") == 0) {
+        g_decklink_injected_frame_count = 0;
+        g_decklink_inject_frame_enable = val;
+    } else
+    if (strcasecmp(var, "sdi_input.inject_frame_count_max") == 0) {
+        g_decklink_injected_frame_count_max = val;
+    } else
+    if (strcasecmp(var, "sdi_input.monitor_hw_clocks") == 0) {
+        g_decklink_monitor_hw_clocks = val;
+    } else
     if (strcasecmp(var, "audio_encoder.ac3_offset_ms") == 0) {
         ac3_offset_ms = val;
+    } else
+    if (strcasecmp(var, "udp_output.drop_next_video_packet") == 0) {
+        g_udp_output_drop_next_video_packet = val;
+    } else
+    if (strcasecmp(var, "udp_output.drop_next_audio_packet") == 0) {
+        g_udp_output_drop_next_audio_packet = val;
+    } else
+    if (strcasecmp(var, "udp_output.drop_next_packet") == 0) {
+        g_udp_output_drop_next_packet = val;
+    } else
+    if (strcasecmp(var, "udp_output.stall_packet_ms") == 0) {
+        g_udp_output_stall_packet_ms = val;
     } else {
         printf("illegal variable name.\n");
         return -1;
@@ -1242,10 +1335,19 @@ static int show_queues(char *command, obecli_command_t *child)
     obe_filter_t *f = NULL;
     obe_queue_t *q = NULL;
 
-    q = &cli.h->enc_smoothing_queue;
-    printf("name: %s depth: %d item(s)\n", q->name, q->size);
-    q = &cli.h->mux_queue;
-    printf("name: %s depth: %d item(s)\n", q->name, q->size);
+    {
+        q = &cli.h->enc_smoothing_queue;
+        printf("name: %s depth: %d item(s)\n", q->name, q->size);
+extern void encoder_smoothing_dump(obe_t *h);
+        encoder_smoothing_dump(cli.h);
+    }
+    {
+        q = &cli.h->mux_queue;
+        printf("name: %s depth: %d item(s)\n", q->name, q->size);
+extern void mux_dump_queue(obe_t *h);
+        mux_dump_queue(cli.h);
+    }
+
     q = &cli.h->mux_smoothing_queue;
     printf("name: %s depth: %d item(s)\n", q->name, q->size);
 
@@ -1268,6 +1370,9 @@ static int show_queues(char *command, obecli_command_t *child)
             printf("name: %s depth: %d item(s)\n", q->name, q->size);
         }
     }
+
+extern ts_writer_t *g_mux_ts_writer_handle;
+    ts_show_queues(g_mux_ts_writer_handle);
 
     return 0;
 }
@@ -1501,9 +1606,18 @@ static int show_output_streams( char *command, obecli_command_t *child )
             printf( "DVB-Teletext\n" );
         else if( output_stream->stream_format == VBI_RAW )
             printf( "DVB-VBI\n" );
-        else if( input_stream->stream_type == STREAM_TYPE_VIDEO )
+        else if (input_stream->stream_type == STREAM_TYPE_VIDEO)
         {
-            printf( "Video: AVC \n" );
+            if (output_stream->stream_format == VIDEO_AVC)
+                printf( "Video: AVC\n" );
+            else if (output_stream->stream_format == VIDEO_HEVC_X265)
+                printf( "Video: HEVC (X265)\n" );
+            else if (output_stream->stream_format == VIDEO_AVC_VAAPI)
+                printf( "Video: AVC (VAAPI)\n" );
+            else if (output_stream->stream_format == VIDEO_HEVC_VAAPI)
+                printf( "Video: HEVC (VAAPI)\n" );
+            else 
+                printf( "Video: AVC OR HEVC\n");
         }
         else if( input_stream->stream_type == STREAM_TYPE_AUDIO )
         {
@@ -1781,6 +1895,28 @@ static void _usage(const char *prog, int exitcode)
     syslog(LOG_INFO, msg);
 
     printf("x264 build#%d (%dbit support)\n", X264_BUILD, X264_BIT_DEPTH);
+    printf("Supports HEVC via  X265: %s\n",
+#if HAVE_X265_H
+        "true"
+#else
+        "false"
+#endif
+    );
+
+    printf("Supports HEVC via VAAPI: %s\n",
+#if HAVE_VA_VA_H
+        "true"
+#else
+        "false"
+#endif
+    );
+    printf("Supports  AVC via VAAPI: %s\n",
+#if HAVE_VA_VA_H
+        "true"
+#else
+        "false"
+#endif
+    );
     printf("Decklink SDK %s\n", BLACKMAGIC_DECKLINK_API_VERSION_STRING);
     printf("\n");
 
@@ -1789,6 +1925,7 @@ static void _usage(const char *prog, int exitcode)
         printf("\t-h              - Display command line helps.\n");
         printf("\t-c <script.txt> - Start OBE and begin executing a list of commands.\n");
         printf("\t-L <string>     - When writing to syslog, use the 'obe-<string>' name/tag. [def: unset]\n");
+        printf("\t-C <file.cf>    - Read and consoledump a codec.cf file.\n");
         printf("\n");
         exit(exitcode);
     }
@@ -1805,8 +1942,33 @@ int main( int argc, char **argv )
     int opt;
     const char *syslogSuffix = NULL;
 
-    while ((opt = getopt(argc, argv, "c:hL:")) != -1) {
+    while ((opt = getopt(argc, argv, "c:C:hL:")) != -1) {
         switch (opt) {
+        case 'C':
+        {
+            FILE *fh = fopen(optarg, "rb");
+            if (!fh) {
+                    fprintf(stderr, "Unable to open cf input file '%s'.\n", optarg);
+                    return 0;
+            }
+
+            unsigned int count = 0;
+            while (!feof(fh)) {
+                    obe_coded_frame_t *f;
+                    size_t rlen = coded_frame_serializer_read(fh, &f);
+                    if (rlen <= 0)
+                            break;
+
+                    printf("[%8d]  ", count++);
+                    coded_frame_print(f);
+
+                    destroy_coded_frame(f);
+            }
+
+            fclose(fh);
+            exit(0);
+         }
+            break;
         case 'c':
             script = optarg;
             {

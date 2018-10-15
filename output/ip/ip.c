@@ -177,6 +177,13 @@ static void close_output( void *handle )
     pthread_mutex_unlock( &status->output->queue.mutex );
 }
 
+#if DO_SET_VARIABLE
+int g_udp_output_drop_next_video_packet = 0;
+int g_udp_output_drop_next_audio_packet = 0;
+int g_udp_output_drop_next_packet = 0;
+int g_udp_output_stall_packet_ms = 0;
+#endif
+
 static void *open_output( void *ptr )
 {
     obe_output_t *output = ptr;
@@ -249,6 +256,43 @@ static void *open_output( void *ptr )
             }
             else
             {
+#if DO_SET_VARIABLE
+                if (g_udp_output_stall_packet_ms) {
+                   printf("Stalling output pipeline for %d ms\n", g_udp_output_stall_packet_ms);
+                   usleep(g_udp_output_stall_packet_ms * 1000);
+                   g_udp_output_stall_packet_ms = 0;
+                }
+
+                if (g_udp_output_drop_next_packet) {
+                   printf("Dropping packet %d\n", g_udp_output_drop_next_packet);
+                   g_udp_output_drop_next_packet--;
+                   remove_from_queue( &output->queue );
+                   av_buffer_unref( &muxed_data[i] );
+                   continue;
+                }
+                if (g_udp_output_drop_next_video_packet) {
+                    unsigned char *p = &muxed_data[i]->data[7*sizeof(int64_t)];
+                    int packetpid = (*(p + 1) << 8 | *(p + 2)) & 0x1fff;
+                    if (packetpid == 0x31) {
+                       printf("Dropping packet %d, pid = 0x%04x\n", g_udp_output_drop_next_video_packet, packetpid);
+                       /* Mangle the header, flip the pid so the decoder can't decode it. */
+                       *(p + 1) |= 0xc0;
+                       *(p + 2) |= 0x40;
+                       g_udp_output_drop_next_video_packet--;
+                    }
+                }
+                if (g_udp_output_drop_next_audio_packet) {
+                    unsigned char *p = &muxed_data[i]->data[7*sizeof(int64_t)];
+                    int packetpid = (*(p + 1) << 8 | *(p + 2)) & 0x1fff;
+                    if (packetpid == 0x32) {
+                       printf("Dropping packet %d, pid = 0x%04x\n", g_udp_output_drop_next_audio_packet, packetpid);
+                       /* Mangle the header, flip the pid so the decoder can't decode it. */
+                       *(p + 1) |= 0xc0;
+                       *(p + 2) |= 0x40;
+                       g_udp_output_drop_next_audio_packet--;
+                    }
+                }
+#endif
                 if( udp_write( ip_handle, &muxed_data[i]->data[7*sizeof(int64_t)], TS_PACKETS_SIZE ) < 0 )
                     syslog( LOG_ERR, "[udp] Failed to write UDP packet\n" );
             }

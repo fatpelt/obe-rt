@@ -116,6 +116,7 @@ typedef struct
     int enable_bitstream_audio;
     int enable_patch1;
     int enable_los_exit_ms;
+    int enable_frame_injection;
 } obe_input_t;
 
 /**** Stream Formats ****/
@@ -127,6 +128,10 @@ enum stream_type_e
     STREAM_TYPE_MISC,
 };
 
+/* Don't add anything new to this unless it goes ad the end,
+ * else various internal lists and structs will break their
+ * hard index values.
+ */
 enum stream_formats_e
 {
     /* Separate Streams */
@@ -179,6 +184,9 @@ enum stream_formats_e
     /* Kernel Labs, a generic handler */
     DVB_TABLE_SECTION,
     SMPTE2038,
+    VIDEO_HEVC_X265,
+    VIDEO_AVC_VAAPI,
+    VIDEO_HEVC_VAAPI,
 };
 
 enum mp2_mode_e

@@ -994,6 +994,9 @@ int obe_setup_output( obe_t *h, obe_output_opts_t *output_opts )
     return 0;
 }
 
+/* LOS frame injection. */
+extern int g_decklink_inject_frame_enable;
+
 int obe_start( obe_t *h )
 {
     obe_int_input_stream_t  *input_stream;
@@ -1176,7 +1179,10 @@ int obe_start( obe_t *h )
                 /* Determine whether we want the TWOLAME (only) audio encoder to rebase its time from the head of its fifo,
                  * and reset bases its clock from the h/w every 100ms or so.
                  */
-                aud_enc_params->use_fifo_head_timing = 0;
+                if (g_decklink_inject_frame_enable)
+                    aud_enc_params->use_fifo_head_timing = 1;
+                else
+                    aud_enc_params->use_fifo_head_timing = 0;
 
                 if( pthread_create( &h->encoders[h->num_encoders]->encoder_thread, NULL, audio_encoder.start_encoder, (void*)aud_enc_params ) < 0 )
                 {
@@ -1479,4 +1485,147 @@ void obe_close( obe_t *h )
 
     free( h );
     h = NULL;
+}
+
+void obe_raw_frame_printf(obe_raw_frame_t *rf)
+{
+    printf("raw_frame %p width = %d ", rf, rf->img.width);
+    printf("height = %d ", rf->img.height);
+    printf("csp = %d (%s) ", rf->img.csp, rf->img.csp == PIX_FMT_YUV422P10 ? "PIX_FMT_YUV422P10" : "PIX_FMT_YUV422");
+    printf("planes[%d] = ", rf->img.planes);
+    for (int i = 0; i < rf->img.planes; i++) {
+        printf("%p ", rf->img.plane[i]);
+    }
+    printf("strides = ");
+    for (int i = 0; i < rf->img.planes; i++) {
+        printf("%d ", rf->img.stride[i]);
+    }
+    printf("\n");
+}
+
+#if 0
+/* Return 1 if the images are byte for byte identical, else 0. */
+int obe_image_compare(obe_image_t *a, obe_image_t *b)
+{
+	/* Its OK for the plane addresses not to match, but the
+	 * plane contents (pixels) must match.... and the number
+	 * of planes, strides and CSC must be identical.
+	 */
+	{
+		obe_image_t x = *a;
+		for (int i = 0; i < 4; i++)
+			x.plane[i] = NULL;
+
+		obe_image_t y = *b;
+		for (int i = 0; i < 4; i++)
+			y.plane[i] = NULL;
+
+		if (memcmp(&x, &y, sizeof(y) != 0)) {
+			printf("core object doesn't match\n");
+			return 0;
+		}
+	}
+
+	uint32_t plane_len[2][4] = { { 0 } };
+	for (int j = 0; j < 2; j++) {
+		obe_image_t *p = a;
+		if (j == 1)
+			p = b;
+
+		for (int i = p->planes - 1; i > 0; i--) {
+			plane_len[j][i - 1] = p->plane[i] - p->plane[i - 1];
+		}
+		if (p->planes == 3) {
+			plane_len[j][2] = plane_len[j][1];
+		}
+	}
+
+	for (int i = 0; i < a->planes; i++) {
+		if (plane_len[0][i] != plane_len[1][i]) {
+			printf("plane lengths don't match\n");
+			return 0;
+		}
+	}
+
+	/* Plane sizes match, now compare the planes themselves. */
+
+	uint32_t alloc_size = 0;
+	for (int i = 0; i < a->planes; i++)
+		alloc_size += plane_len[0][i];
+
+	if (memcmp(a->plane[0], b->plane[0], alloc_size) != 0) {
+		printf("plane itself has changed\n");
+		return 0;
+	}
+
+	return 1; /* Perfect image copy. */
+}
+#endif
+
+void obe_image_copy(obe_image_t *dst, obe_image_t *src)
+{
+	memcpy(dst, src, sizeof(obe_image_t));
+
+	uint32_t plane_len[4] = { 0 };
+	for (int i = src->planes - 1; i > 0; i--) {
+		plane_len[i - 1] = src->plane[i] - src->plane[i - 1];
+	}
+	if (src->planes == 3) {
+		plane_len[2] = plane_len[1];
+	}
+
+	uint32_t alloc_size = 0;
+	for (int i = 0; i < src->planes; i++)
+		alloc_size += plane_len[i];
+
+	for (int i = 0; i < src->planes; i++) {
+
+		if (i == 0 && src->plane[i]) {
+			dst->plane[i] = (uint8_t *)malloc(alloc_size);
+			memcpy(dst->plane[i], src->plane[i], alloc_size);
+		}
+		if (i > 0) {
+			dst->plane[i] = dst->plane[i - 1] + plane_len[i - 1];
+		}
+
+	}
+}
+
+#if 0
+void obe_raw_frame_free(obe_raw_frame_t *frame)
+{
+	free(frame->alloc_img.plane[0]);
+	for (int i = 0; i < frame->num_user_data; i++)
+		free(frame->user_data[i].data);
+	free(frame->user_data);
+	free(frame);
+}
+#endif
+
+obe_raw_frame_t *obe_raw_frame_copy(obe_raw_frame_t *frame)
+{
+    obe_raw_frame_t *f = new_raw_frame();
+
+    memcpy(f, frame, sizeof(*frame));
+
+    obe_image_copy(&f->alloc_img, &frame->alloc_img);
+
+    memcpy(&f->img, &f->alloc_img, sizeof(frame->alloc_img));
+
+    if (f->num_user_data) {
+        f->user_data = (obe_user_data_t *)malloc(sizeof(obe_user_data_t) * f->num_user_data);
+        memcpy(f->user_data, frame->user_data, sizeof(obe_user_data_t) * f->num_user_data);
+
+        for (int i = 0; i < f->num_user_data; i++) {
+            f->user_data[i].data = (uint8_t *)malloc(frame->user_data[i].len);
+            memcpy(f->user_data[i].data, frame->user_data[i].data, f->user_data[i].len);
+        }
+
+    } else {
+        f->user_data = NULL;
+    }
+
+//    obe_raw_frame_printf(f);
+
+    return f;
 }

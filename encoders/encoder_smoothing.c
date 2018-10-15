@@ -23,11 +23,44 @@
 
 #include "common/common.h"
 
+static int64_t last_clock = -1;
+static int64_t start_pts = -1;
+static int64_t start_dts = -1;
+static int num_enc_smoothing_frames = 0;
+static int buffer_frames = 0;
+
+void encoder_smoothing_dump(obe_t *h)
+{
+    int count = 0, size = 0;
+
+    pthread_mutex_lock(&h->enc_smoothing_queue.mutex);
+    for (int i = 0; i < h->enc_smoothing_queue.size; i++) {
+        obe_coded_frame_t *cf = h->enc_smoothing_queue.queue[i];
+        count++;
+        size += cf->len;
+
+        if (i < 5) {
+            printf("\tsmoother.");
+            coded_frame_print(cf);
+        }
+    }
+    pthread_mutex_unlock(&h->enc_smoothing_queue.mutex);
+    printf("\tsmoother.frames = %d totalsize %d\n", count, size);
+    printf("\tsmoother.last_clock = %" PRIi64 "\n", last_clock);
+    printf("\tsmoother.start_pts = %" PRIi64 "\n", start_pts);
+    printf("\tsmoother.start_dts = %" PRIi64 "\n", start_dts);
+    printf("\tsmoother.num_enc_smoothing_frames = %d\n", num_enc_smoothing_frames);
+    printf("\tsmoother.buffer_frames = %d\n", buffer_frames);
+    printf("\tsmoother.h->obe_clock_last_pts = %" PRIi64 "\n", h->obe_clock_last_pts);
+}
+
 static void *encoder_start_smoothing( void *ptr )
 {
     obe_t *h = ptr;
+#if 0
     int num_enc_smoothing_frames = 0, buffer_frames = 0;
     int64_t start_dts = -1, start_pts = -1, last_clock = -1;
+#endif
     obe_coded_frame_t *coded_frame = NULL;
 
     struct sched_param param = {0};

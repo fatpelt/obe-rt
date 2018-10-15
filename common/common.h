@@ -43,6 +43,9 @@
 #include "obe.h"
 #include <common/queue.h>
 
+/* Enable some realtime debugging commands */
+#define DO_SET_VARIABLE 1
+
 #define MAX_DEVICES 1
 #define MAX_STREAMS 40
 #define MAX_CHANNELS 16
@@ -630,5 +633,12 @@ int64_t get_input_clock_in_mpeg_ticks( obe_t *h );
 void sleep_input_clock( obe_t *h, int64_t i_delay );
 
 int get_non_display_location( int type );
+void obe_raw_frame_printf(obe_raw_frame_t *rf);
+obe_raw_frame_t *obe_raw_frame_copy(obe_raw_frame_t *frame);
+#if 0
+void obe_image_copy(obe_image_t *dst, obe_image_t *src);
+int obe_image_compare(obe_image_t *dst, obe_image_t *src);
+void obe_raw_frame_free(obe_raw_frame_t *frame);
+#endif
 
 #endif
