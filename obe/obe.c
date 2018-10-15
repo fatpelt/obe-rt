@@ -1588,6 +1588,7 @@ void obe_raw_frame_printf(obe_raw_frame_t *rf)
     printf("\n");
 }
 
+#if 0
 /* Return 1 if the images are byte for byte identical, else 0. */
 int obe_image_compare(obe_image_t *a, obe_image_t *b)
 {
@@ -1644,6 +1645,7 @@ int obe_image_compare(obe_image_t *a, obe_image_t *b)
 
 	return 1; /* Perfect image copy. */
 }
+#endif
 
 void obe_image_copy(obe_image_t *dst, obe_image_t *src)
 {
@@ -1674,6 +1676,7 @@ void obe_image_copy(obe_image_t *dst, obe_image_t *src)
 	}
 }
 
+#if 0
 void obe_raw_frame_free(obe_raw_frame_t *frame)
 {
 	free(frame->alloc_img.plane[0]);
@@ -1682,6 +1685,7 @@ void obe_raw_frame_free(obe_raw_frame_t *frame)
 	free(frame->user_data);
 	free(frame);
 }
+#endif
 
 obe_raw_frame_t *obe_raw_frame_copy(obe_raw_frame_t *frame)
 {
