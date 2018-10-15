@@ -310,7 +310,9 @@ int udp_open( hnd_t *p_handle, obe_udp_opts_t *udp_opts )
     return -1;
 }
 
+#if 0
 #include <encoders/video/sei-timestamp.h>
+#endif
 
 int udp_write( hnd_t handle, uint8_t *buf, int size )
 {
@@ -318,7 +320,7 @@ int udp_write( hnd_t handle, uint8_t *buf, int size )
     int ret;
 
     if (!s->is_connected) {
-#if SEI_TIMESTAMPING
+#if 0 /* SEI_TIMESTAMPING */
         if (size == 1316) {
             //printf("%s() %d bytes\n", __func__, size);
 

@@ -1922,10 +1922,6 @@ static void _usage(const char *prog, int exitcode)
 #endif
     );
     printf("Decklink SDK %s\n", BLACKMAGIC_DECKLINK_API_VERSION_STRING);
-#if DO_SET_VARIABLE
-    printf("--- CUSTOM BUILD WITH SET VARIABLES ENABLED\n");
-#endif
-
     printf("\n");
 
     if (exitcode) {
