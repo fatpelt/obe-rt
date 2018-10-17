@@ -29,9 +29,29 @@
 #include <libavutil/opt.h>
 #include <libavutil/mathematics.h>
 
+//
+struct historical_int64_s
+{
+	int64_t current;
+	int64_t last;
+	int64_t diff;
+};
+
+__inline__ void historical_int64_init(struct historical_int64_s *s) { memset(s, 0, sizeof(*s)); }
+__inline__ void historical_int64_set(struct historical_int64_s *s, int64_t value) { s->last = s->current; s->current = value; s->diff = s->current - s->last; }
+__inline__ int64_t historical_int64_get_diff(struct historical_int64_s *s) { return s->diff; }
+__inline__ void historical_int64_printf(struct historical_int64_s *s, char *prefix)
+{
+	printf("%s: curr: %" PRIi64 " last: %" PRIi64 " diff: %" PRIi64 "\n",
+		prefix, s->current, s->last, s->diff);
+}
+//
+
 #define MP2_AUDIO_BUFFER_SIZE 50000
 
 #define LOCAL_DEBUG 0
+
+#define MODULE "[mp2]: "
 
 static void *start_encoder_mp2( void *ptr )
 {
@@ -45,6 +65,15 @@ static void *start_encoder_mp2( void *ptr )
     obe_output_stream_t *stream = enc_params->stream;
     obe_raw_frame_t *raw_frame;
     obe_coded_frame_t *coded_frame;
+
+    struct historical_int64_s rf_pts;
+    historical_int64_init(&rf_pts);
+
+    struct historical_int64_s avfm_pts;
+    historical_int64_init(&avfm_pts);
+
+    struct historical_int64_s cf_pts;
+    historical_int64_init(&cf_pts);
 
 #if LOCAL_DEBUG
     printf("%s() output_stream_id = %d\n", __func__, encoder->output_stream_id);
@@ -143,6 +172,9 @@ static void *start_encoder_mp2( void *ptr )
         raw_frame = encoder->queue.queue[0];
         pthread_mutex_unlock( &encoder->queue.mutex );
 
+        historical_int64_set(&rf_pts, raw_frame->pts);
+        //historical_int64_printf(&rf_pts, "  rf_pts");
+
 #if LOCAL_DEBUG
         /* Send any audio to the AC3 frame slicer.
          * Push the buffer starting at the channel containing bitstream, and span 2 channels,
@@ -189,6 +221,9 @@ static void *start_encoder_mp2( void *ptr )
         struct avfm_s avfm;
         memcpy(&avfm, &raw_frame->avfm, sizeof(avfm));
 
+        historical_int64_set(&avfm_pts, avfm.audio_pts);
+        //historical_int64_printf(&avfm_pts, "avfm_pts");
+
         raw_frame->release_data( raw_frame );
         raw_frame->release_frame( raw_frame );
         remove_from_queue( &encoder->queue );
@@ -204,7 +239,7 @@ static void *start_encoder_mp2( void *ptr )
         /* If the fifo is empty, and the compressor created some payload,
          * reset the audio timebase to batch the current latest audioframe.
          */
-        if (output_size > 0 && av_fifo_size(fifo) == output_size) {
+        if (output_size > 0 && av_fifo_size(fifo) >= output_size) {
             fifoHeadPTS = avfm.audio_pts;
         }
 
@@ -240,7 +275,10 @@ static void *start_encoder_mp2( void *ptr )
             framesProcessed++;
             if (h->obe_system == OBE_SYSTEM_TYPE_LOWEST_LATENCY || h->obe_system == OBE_SYSTEM_TYPE_LOW_LATENCY) {
                 if (framesProcessed > 1 && enc_params->frames_per_pes == 1) {
-                    coded_frame->avfm.audio_pts += 648000;
+                    if (enc_params->use_fifo_head_timing == 1) 
+                        fifoHeadPTS += 648000;
+                    else
+                        coded_frame->avfm.audio_pts += 648000;
                 }
             }
 
@@ -283,10 +321,15 @@ static void *start_encoder_mp2( void *ptr )
                 }
                 lastCodedFramePTS = coded_frame->pts;
 
+                historical_int64_set(&cf_pts, coded_frame->pts);
+                //historical_int64_printf(&cf_pts, "  cf_pts");
+
                 if (lastOutputFramePTS + (648000 * enc_params->frames_per_pes) != coded_frame->pts) {
-                    printf("Output PTS discontinuity. Should be %" PRIi64 " was %" PRIi64 "\n",
+                    printf(MODULE "Output PTS discontinuity\n\tShould be %" PRIi64 " was %" PRIi64 " diff %9" PRIi64 " frames_per_pes %d\n",
                         lastOutputFramePTS + (648000 * enc_params->frames_per_pes),
-                        coded_frame->pts);
+                        coded_frame->pts,
+			(lastOutputFramePTS + (648000 * enc_params->frames_per_pes)) - coded_frame->pts,
+			enc_params->frames_per_pes);
                 }
                 lastOutputFramePTS = coded_frame->pts;
             }
