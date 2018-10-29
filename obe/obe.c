@@ -1421,8 +1421,6 @@ PRINT_OBE_FILTER(h->filters[h->num_filters], "AUDIO FILTER");
     input_params->device = h->devices[0];
 
     /* TODO: in the future give it only the streams which are necessary */
-    input_params->num_output_streams = h->num_output_streams;
-    input_params->output_streams = obe_core_get_output_stream_by_index(h, 0);
     input_params->audio_samples = num_samples;
 
     if( pthread_create( &h->devices[0]->device_thread, NULL, input.open_input, (void*)input_params ) < 0 )
