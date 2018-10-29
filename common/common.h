@@ -193,9 +193,6 @@ typedef struct
     int num_input_streams;
     obe_int_input_stream_t *streams[MAX_STREAMS];
 
-    int num_output_streams;
-    obe_output_stream_t *output_streams;
-
     obe_input_stream_t *probed_streams;
 } obe_device_t;
 
