@@ -49,6 +49,11 @@ typedef struct
     obe_t *h;
     obe_input_t input;
     obe_input_program_t program;
+
+    /* Configuration params from the command line configure these output streams.
+     * before they're finally cloned into the obe_t struct as 'output_streams'.
+     * See obe_setup_streams() for the cloning action.
+     */
     int num_output_streams;
     obe_output_stream_t *output_streams;
     obe_mux_opts_t mux_opts;
@@ -362,7 +367,7 @@ static int parse_enum_value( const char *arg, const char * const *names, int *ds
     return -1;
 }
 
-static char *get_format_name( int stream_format, const obecli_format_name_t *names, int long_name )
+static char *get_format_name(int stream_format, const obecli_format_name_t *names, int long_name)
 {
     int i = 0;
 
@@ -370,6 +375,11 @@ static char *get_format_name( int stream_format, const obecli_format_name_t *nam
         i++;
 
     return  long_name ? names[i].long_name : names[i].format_name;
+}
+
+const char *obe_core_get_format_name_short(int stream_format)
+{
+	return (const char *)get_format_name(stream_format, format_names, 0);
 }
 
 /* add/remove functions */
