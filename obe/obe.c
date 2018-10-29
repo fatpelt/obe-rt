@@ -916,6 +916,9 @@ int obe_setup_streams( obe_t *h, obe_output_stream_t *output_streams, int num_st
     }
     memcpy(h->priv_output_streams, output_streams, num_streams * sizeof(*h->priv_output_streams));
 
+    for (int i = 0; i < num_streams; i++)
+        obe_core_dump_output_stream(&output_streams[i], 0);
+
     // TODO sort out VBI
 
     return 0;
@@ -1717,4 +1720,16 @@ obe_raw_frame_t *obe_raw_frame_copy(obe_raw_frame_t *frame)
 //    obe_raw_frame_printf(f);
 
     return f;
+}
+
+void obe_core_dump_output_stream(obe_output_stream_t *s, int index)
+{
+	const char *format_name = obe_core_get_format_name_short(s->stream_format);
+
+	printf("%s(index = %d)\n", __func__, index);
+	printf("  input_stream_id = %d\n", s->input_stream_id);
+	printf(" output_stream_id = %d\n", s->output_stream_id);
+	printf("    stream_action = %d [%s]\n", s->stream_action,
+		s->stream_action == STREAM_PASSTHROUGH ? "PASSTHROUGH" : "STREAM_ENCODE");
+	printf("    stream_format = %d [%s]\n", s->stream_format, format_name);
 }
