@@ -109,8 +109,6 @@ void destroy_device( obe_device_t *device )
         free( device->streams[i] );
     if( device->probed_streams )
         free( device->probed_streams );
-    if( device->location )
-        free( device->location );
     free( device );
 }
 
