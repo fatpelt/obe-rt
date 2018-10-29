@@ -686,7 +686,7 @@ static void *start_filter_video( void *ptr )
     obe_filter_t *filter = filter_params->filter;
     obe_int_input_stream_t *input_stream = filter_params->input_stream;
     obe_raw_frame_t *raw_frame;
-    obe_output_stream_t *output_stream = get_output_stream( h, 0 ); /* FIXME when output_stream_id for video is not zero */
+    obe_output_stream_t *output_stream = get_output_stream_by_id(h, 0); /* FIXME when output_stream_id for video is not zero */
     int h_shift, v_shift;
     const AVPixFmtDescriptor *pfd;
 

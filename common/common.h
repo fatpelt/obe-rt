@@ -530,7 +530,7 @@ struct obe_t
 
     /* Streams */
     int num_output_streams;
-    obe_output_stream_t *output_streams;
+    obe_output_stream_t *priv_output_streams;
 
     /** Individual Threads */
     /* Smoothing (video) */
@@ -618,8 +618,13 @@ int remove_from_output_queue( obe_t *h );
 
 obe_int_input_stream_t *get_input_stream( obe_t *h, int input_stream_id );
 obe_encoder_t *get_encoder( obe_t *h, int stream_id );
-obe_output_stream_t *get_output_stream( obe_t *h, int stream_id );
+obe_output_stream_t *get_output_stream_by_id( obe_t *h, int stream_id);
 obe_output_stream_t *get_output_stream_by_format( obe_t *h, int format );
+
+__inline__ static obe_output_stream_t *obe_core_get_output_stream_by_index(struct obe_t *s, int nr)
+{
+	return &s->priv_output_streams[nr];
+}
 
 int64_t get_wallclock_in_mpeg_ticks( void );
 void sleep_mpeg_ticks( int64_t i_delay );

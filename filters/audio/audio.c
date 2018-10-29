@@ -62,7 +62,7 @@ printf("%s() raw_frame->input_stream_id = %d, num_encoders = %d\n", __func__, ra
         /* ignore the video track, process all PCM encoders first */
         for (int i = 1; i < h->num_encoders; i++)
         {
-            output_stream = get_output_stream(h, h->encoders[i]->output_stream_id);
+            output_stream = get_output_stream_by_id(h, h->encoders[i]->output_stream_id);
             if (output_stream->stream_format == AUDIO_AC_3_BITSTREAM)
                 continue; /* Ignore downstream AC3 bitstream encoders */
 
@@ -112,7 +112,7 @@ printf("%s() raw_frame->input_stream_id = %d, num_encoders = %d\n", __func__, ra
         int didForward = 0;
         for (int i = 1; i < h->num_encoders; i++)
         {
-            output_stream = get_output_stream(h, h->encoders[i]->output_stream_id);
+            output_stream = get_output_stream_by_id(h, h->encoders[i]->output_stream_id);
             if (output_stream->stream_format != AUDIO_AC_3_BITSTREAM)
                 continue; /* Ignore downstream AC3 bitstream encoders */
 
