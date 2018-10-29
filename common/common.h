@@ -189,7 +189,7 @@ typedef struct
     pthread_t device_thread;
 
     int num_input_streams;
-    obe_int_input_stream_t *streams[MAX_STREAMS];
+    obe_int_input_stream_t *input_streams[MAX_STREAMS];
 
     obe_input_stream_t *probed_streams;
 } obe_device_t;
