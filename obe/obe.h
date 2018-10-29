@@ -551,4 +551,5 @@ int obe_stop( obe_t *h );
 
 void obe_close( obe_t *h );
 
+const char *obe_core_get_format_name_short(int stream_format);
 #endif
