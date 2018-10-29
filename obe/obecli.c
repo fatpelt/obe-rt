@@ -709,7 +709,6 @@ static int set_stream( char *command, obecli_command_t *child )
                     return -1;
                 }
             }
-printf("video_codec_id = %d\n", video_codec_id);
 
             if( input_stream->stream_type == STREAM_TYPE_VIDEO )
             {
@@ -779,11 +778,9 @@ printf("video_codec_id = %d\n", video_codec_id);
                 cli.output_streams[output_stream_id].stream_action = STREAM_ENCODE;
 
                 if (video_codec_id == 0) {
-printf("Setting stream format to VIDEO_AVC\n");
                     cli.output_streams[output_stream_id].stream_format = VIDEO_AVC;
                 } else
                 if (video_codec_id == 1) {
-printf("Setting stream format to VIDEO_HEVC_X265\n");
                     cli.output_streams[output_stream_id].stream_format = VIDEO_HEVC_X265;
                 } else
                 if (video_codec_id == 2) {
@@ -1626,7 +1623,6 @@ static int show_output_streams( char *command, obecli_command_t *child )
             printf( "DVB-VBI\n" );
         else if (input_stream->stream_type == STREAM_TYPE_VIDEO)
         {
-printf("output_stream->stream_format = %d\n", output_stream->stream_format);
             if (output_stream->stream_format == VIDEO_AVC)
                 printf( "Video: AVC\n" );
             else if (output_stream->stream_format == VIDEO_HEVC_X265)

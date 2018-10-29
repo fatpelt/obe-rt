@@ -625,6 +625,7 @@ __inline__ static obe_output_stream_t *obe_core_get_output_stream_by_index(struc
 {
 	return &s->priv_output_streams[nr];
 }
+void obe_core_dump_output_stream(obe_output_stream_t *s, int index);
 
 int64_t get_wallclock_in_mpeg_ticks( void );
 void sleep_mpeg_ticks( int64_t i_delay );
