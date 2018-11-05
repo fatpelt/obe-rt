@@ -1093,10 +1093,8 @@ int obe_start( obe_t *h )
 
             obe_output_stream_t *ostream = obe_core_get_output_stream_by_index(h, i);
 
-printf("h->output_streams[%d].stream_format = %d\n", i, os->stream_format);
             if (ostream->stream_format == VIDEO_AVC )
             {
-printf("Starting x264 thread\n");
                 x264_param_t *x264_param = &os->avc_param;
                 if( h->obe_system == OBE_SYSTEM_TYPE_LOWEST_LATENCY )
                 {
