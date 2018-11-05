@@ -95,7 +95,8 @@ static const char * entropy_modes[] = { "cabac", "cavlc", NULL };
 static const char * system_opts[] = { "system-type", "max-probe-time", NULL };
 static const char * input_opts[]  = { "location", "card-idx", "video-format", "video-connection", "audio-connection",
                                       "smpte2038", "scte35", "vanc-cache", "bitstream-audio", "patch1", "los-exit-ms",
-                                      "frame-injection", NULL };
+                                      "frame-injection", /* 11 */
+                                      NULL };
 static const char * add_opts[] =    { "type" };
 /* TODO: split the stream options into general options, video options, ts options */
 static const char * stream_opts[] = { "action", "format",
