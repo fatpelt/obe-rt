@@ -136,7 +136,7 @@ static void * detector_callback(void *user_context,
 	obe_aud_enc_params_t *enc_params = user_context;
 	obe_t *h = enc_params->h;
 	obe_encoder_t *encoder = enc_params->encoder;
-	obe_output_stream_t *output_stream = get_output_stream(h, encoder->output_stream_id);
+	obe_output_stream_t *output_stream = get_output_stream_by_id(h, encoder->output_stream_id);
 	uint32_t payload_byteCount = payload_bitCount / 8;
 
 	/* Keep track of any lost signal condition inside our AC3 monitoring window. */

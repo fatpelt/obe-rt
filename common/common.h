@@ -175,9 +175,7 @@ typedef struct
 
 typedef struct
 {
-    int device_id;
     int device_type;
-    char *location;
 
     obe_input_t user_opts;
 
@@ -191,10 +189,7 @@ typedef struct
     pthread_t device_thread;
 
     int num_input_streams;
-    obe_int_input_stream_t *streams[MAX_STREAMS];
-
-    int num_output_streams;
-    obe_output_stream_t *output_streams;
+    obe_int_input_stream_t *input_streams[MAX_STREAMS];
 
     obe_input_stream_t *probed_streams;
 } obe_device_t;
@@ -535,7 +530,7 @@ struct obe_t
 
     /* Streams */
     int num_output_streams;
-    obe_output_stream_t *output_streams;
+    obe_output_stream_t *priv_output_streams;
 
     /** Individual Threads */
     /* Smoothing (video) */
@@ -623,8 +618,14 @@ int remove_from_output_queue( obe_t *h );
 
 obe_int_input_stream_t *get_input_stream( obe_t *h, int input_stream_id );
 obe_encoder_t *get_encoder( obe_t *h, int stream_id );
-obe_output_stream_t *get_output_stream( obe_t *h, int stream_id );
+obe_output_stream_t *get_output_stream_by_id( obe_t *h, int stream_id);
 obe_output_stream_t *get_output_stream_by_format( obe_t *h, int format );
+
+__inline__ static obe_output_stream_t *obe_core_get_output_stream_by_index(struct obe_t *s, int nr)
+{
+	return &s->priv_output_streams[nr];
+}
+void obe_core_dump_output_stream(obe_output_stream_t *s, int index);
 
 int64_t get_wallclock_in_mpeg_ticks( void );
 void sleep_mpeg_ticks( int64_t i_delay );

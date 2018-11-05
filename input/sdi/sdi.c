@@ -215,7 +215,7 @@ int check_user_selected_non_display_data( obe_t *h, int type, int location )
 
     if( location == USER_DATA_LOCATION_DVB_STREAM )
     {
-        output_stream = get_output_stream( h, VBI_RAW );
+        output_stream = get_output_stream_by_id(h, VBI_RAW);
         if( !output_stream )
             return 0;
 
@@ -234,7 +234,7 @@ int check_user_selected_non_display_data( obe_t *h, int type, int location )
     else if( location == USER_DATA_LOCATION_FRAME )
     {
         /* Assumes video frame has stream_id=0 */
-        output_stream = get_output_stream( h, 0 );
+        output_stream = get_output_stream_by_id(h, 0);
         /* Should never happen */
         if( !output_stream )
             return 0;

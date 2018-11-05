@@ -273,8 +273,8 @@ static void *audioThreadFunc(void *p)
 		raw_frame->pts = 0;
 
 		for (int i = 0; i < v4l2_ctx->device->num_input_streams; i++) {
-			if (v4l2_ctx->device->streams[i]->stream_format == AUDIO_PCM) {
-				raw_frame->input_stream_id = v4l2_ctx->device->streams[i]->input_stream_id;
+			if (v4l2_ctx->device->input_streams[i]->stream_format == AUDIO_PCM) {
+				raw_frame->input_stream_id = v4l2_ctx->device->input_streams[i]->input_stream_id;
 			}
 		}
 
@@ -670,7 +670,7 @@ static void *probe_stream(void *ptr)
         goto finish;
 
     device->num_input_streams = num_streams;
-    memcpy(device->streams, streams, device->num_input_streams * sizeof(obe_int_input_stream_t**));
+    memcpy(device->input_streams, streams, device->num_input_streams * sizeof(obe_int_input_stream_t**));
     device->device_type = INPUT_DEVICE_V4L2;
     memcpy(&device->user_opts, user_opts, sizeof(*user_opts) );
 

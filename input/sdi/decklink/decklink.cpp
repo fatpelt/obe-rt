@@ -1420,8 +1420,8 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
 
             for( int i = 0; i < decklink_ctx->device->num_input_streams; i++ )
             {
-                if( decklink_ctx->device->streams[i]->stream_format == VIDEO_UNCOMPRESSED )
-                    raw_frame->input_stream_id = decklink_ctx->device->streams[i]->input_stream_id;
+                if (decklink_ctx->device->input_streams[i]->stream_format == VIDEO_UNCOMPRESSED)
+                    raw_frame->input_stream_id = decklink_ctx->device->input_streams[i]->input_stream_id;
             }
 
             /* We're guaranteed to have a audio frame. */
@@ -1594,8 +1594,8 @@ static int findOutputStreamIdByFormat(decklink_ctx_t *decklink_ctx, enum stream_
 		return -1;
 
 	for(int i = 0; i < decklink_ctx->device->num_input_streams; i++) {
-		if ((decklink_ctx->device->streams[i]->stream_type == stype) &&
-			(decklink_ctx->device->streams[i]->stream_format == fmt))
+		if ((decklink_ctx->device->input_streams[i]->stream_type == stype) &&
+			(decklink_ctx->device->input_streams[i]->stream_format == fmt))
 			return i;
         }
 
@@ -2357,7 +2357,7 @@ static void *probe_stream( void *ptr )
         goto finish;
 
     device->num_input_streams = cur_stream;
-    memcpy( device->streams, streams, device->num_input_streams * sizeof(obe_int_input_stream_t**) );
+    memcpy(device->input_streams, streams, device->num_input_streams * sizeof(obe_int_input_stream_t**) );
     device->device_type = INPUT_DEVICE_DECKLINK;
     memcpy( &device->user_opts, user_opts, sizeof(*user_opts) );
 

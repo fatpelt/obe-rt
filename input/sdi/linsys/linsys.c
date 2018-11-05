@@ -674,8 +674,8 @@ static int handle_audio_frame( linsys_opts_t *linsys_opts, uint8_t *data )
     raw_frame->release_frame = obe_release_frame;
     for( int i = 0; i < linsys_ctx->device->num_input_streams; i++ )
     {
-        if( linsys_ctx->device->streams[i]->stream_format == AUDIO_PCM )
-            raw_frame->input_stream_id = linsys_ctx->device->streams[i]->input_stream_id;
+        if (linsys_ctx->device->input_streams[i]->stream_format == AUDIO_PCM )
+            raw_frame->input_stream_id = linsys_ctx->device->input_streams[i]->input_stream_id;
     }
 
     if( add_to_filter_queue( linsys_ctx->h, raw_frame ) < 0 )
@@ -1227,7 +1227,7 @@ static void *probe_stream( void *ptr )
         goto finish;
 
     device->num_input_streams = num_streams;
-    memcpy( device->streams, streams, num_streams * sizeof(obe_int_input_stream_t**) );
+    memcpy(device->input_streams, streams, num_streams * sizeof(obe_int_input_stream_t**));
     device->device_type = INPUT_DEVICE_LINSYS_SDI;
     memcpy( &device->user_opts, user_opts, sizeof(*user_opts) );
 

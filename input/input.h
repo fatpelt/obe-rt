@@ -40,8 +40,6 @@ typedef struct
 {
     obe_t *h;
     obe_device_t *device;
-    int num_output_streams;
-    obe_output_stream_t *output_streams;
     int audio_samples;
 } obe_input_params_t;
 
