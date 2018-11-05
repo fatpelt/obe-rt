@@ -372,6 +372,11 @@ static char *get_format_name( int stream_format, const obecli_format_name_t *nam
     return  long_name ? names[i].long_name : names[i].format_name;
 }
 
+const char *obe_core_get_format_name_short(int stream_format)
+{
+	return (const char *)get_format_name(stream_format, format_names, 0);
+}
+
 /* add/remove functions */
 static int add_stream( char *command, obecli_command_t *child )
 {

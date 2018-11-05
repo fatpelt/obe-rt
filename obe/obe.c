@@ -1629,3 +1629,15 @@ obe_raw_frame_t *obe_raw_frame_copy(obe_raw_frame_t *frame)
 
     return f;
 }
+
+void obe_core_dump_output_stream(obe_output_stream_t *s, int index)
+{
+	const char *format_name = obe_core_get_format_name_short(s->stream_format);
+
+	printf("%s(index = %d)\n", __func__, index);
+	printf("  input_stream_id = %4d\n", s->input_stream_id);
+	printf(" output_stream_id = %4d\n", s->output_stream_id);
+	printf("    stream_action = %4d [%s]\n", s->stream_action,
+		s->stream_action == STREAM_PASSTHROUGH ? "PASSTHROUGH" : "STREAM_ENCODE");
+	printf("    stream_format = %4d [%s]\n", s->stream_format, format_name);
+}
