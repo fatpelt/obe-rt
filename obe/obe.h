@@ -117,6 +117,7 @@ typedef struct
     int enable_patch1;
     int enable_los_exit_ms;
     int enable_frame_injection;
+    int enable_allow_1080p60;
 } obe_input_t;
 
 /**** Stream Formats ****/

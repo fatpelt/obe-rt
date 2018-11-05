@@ -96,6 +96,7 @@ static const char * system_opts[] = { "system-type", "max-probe-time", NULL };
 static const char * input_opts[]  = { "location", "card-idx", "video-format", "video-connection", "audio-connection",
                                       "smpte2038", "scte35", "vanc-cache", "bitstream-audio", "patch1", "los-exit-ms",
                                       "frame-injection", /* 11 */
+                                      "allow-1080p60", /* 12 */
                                       NULL };
 static const char * add_opts[] =    { "type" };
 /* TODO: split the stream options into general options, video options, ts options */
@@ -560,6 +561,7 @@ static int set_input( char *command, obecli_command_t *child )
         char *patch1 = obe_get_option( input_opts[9], opts );
         char *los_exit_ms = obe_get_option( input_opts[10], opts );
         char *frame_injection = obe_get_option(input_opts[11], opts);
+        char *allow_1080p60 = obe_get_option(input_opts[12], opts);
 
         FAIL_IF_ERROR( video_format && ( check_enum_value( video_format, input_video_formats ) < 0 ),
                        "Invalid video format\n" );
@@ -580,6 +582,7 @@ static int set_input( char *command, obecli_command_t *child )
              strcpy( cli.input.location, location );
         }
 
+        cli.input.enable_allow_1080p60 = obe_otoi(allow_1080p60, cli.input.enable_allow_1080p60);
         cli.input.enable_frame_injection = obe_otoi(frame_injection, cli.input.enable_frame_injection);
         cli.input.enable_patch1 = obe_otoi( patch1, cli.input.enable_patch1 );
         cli.input.enable_bitstream_audio = obe_otoi( bitstream_audio, cli.input.enable_bitstream_audio );
