@@ -807,6 +807,10 @@ static int set_stream( char *command, obecli_command_t *child )
                 if( profile )
                     parse_enum_value( profile, x264_profile_names, &cli.avc_profile );
 
+#if 0
+// VAAPI
+                avc_param->i_level_idc = 13;
+#endif
                 if( level )
                 {
                     if( !strcasecmp( level, "1b" ) )
@@ -1691,8 +1695,6 @@ static int start_encode( char *command, obecli_command_t *child )
             if( !cli.output_streams[i].avc_param.rc.i_vbv_max_bitrate && cli.output_streams[i].avc_param.rc.i_bitrate )
                 cli.output_streams[i].avc_param.rc.i_vbv_max_bitrate = cli.output_streams[i].avc_param.rc.i_bitrate;
 
-            cli.output_streams[i].stream_action = STREAM_ENCODE;
-            cli.output_streams[i].stream_format = VIDEO_AVC;
             if( cli.avc_profile >= 0 )
                 x264_param_apply_profile( &cli.output_streams[i].avc_param, x264_profile_names[cli.avc_profile] );
         }
@@ -1906,7 +1908,7 @@ static void _usage(const char *prog, int exitcode)
     printf("Including Kernel Labs enhancements.\n");
 
     char msg[128];
-    sprintf(msg, "Version 1.12 (" GIT_VERSION ")");
+    sprintf(msg, "Version 2.0 (" GIT_VERSION ")");
     printf("%s\n", msg);
     syslog(LOG_INFO, msg);
 

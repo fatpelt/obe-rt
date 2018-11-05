@@ -18,6 +18,14 @@ LDFLAGS += -lpthread -lz -lx264 -lyuv
 LDFLAGS += -lavformat -lavcodec -lavresample -ldl -lasound -lfdk-aac -lbz2 -lz -lswscale -lavutil -lm
 LDFLAGS += -lklscte35 -lklvanc
 LDFLAGS += -ltwolame -lmpegts -lstdc++ -ldl -lzvbi -lreadline
+if LIBX265
+LDFLAGS += -lx265
+endif
+if LIBVA
+LDFLAGS += -L../../vaapi/libva-utils/common/.libs
+LDFLAGS += -lva -lva-display
+CFLAGS += -I../../vaapi/libva-utils/common
+endif
 
 CXXFLAGS = $(CFLAGS)
 
@@ -53,6 +61,14 @@ obecli_SOURCES += ../encoders/audio/mp2/twolame.c
 obecli_SOURCES += ../encoders/audio/ac3bitstream/ac3bitstream.c
 obecli_SOURCES += ../encoders/audio/ac3bitstream/klringbuffer.c
 obecli_SOURCES += ../encoders/video/avc/x264.c
+if LIBX265
+obecli_SOURCES += ../encoders/video/hevc/x265.c
+endif
+if LIBVA
+obecli_SOURCES += ../encoders/video/avc/vaapi.c
+obecli_SOURCES += ../encoders/video/hevc/vaapi-hevc.c
+endif
+obecli_SOURCES += ../encoders/video/sei-timestamp.c
 obecli_SOURCES += ../common/network/udp/udp.c
 obecli_SOURCES += ../common/linsys/util.c
 obecli_SOURCES += ../common/x86/x86inc.asm

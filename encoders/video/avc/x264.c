@@ -91,6 +91,11 @@ printf("pic->img.i_csp = %d [%s] bits = %d\n",
         }
     }
 
+#if SEI_TIMESTAMPING
+    /* Create space for unregister data, containing before and after timestamps. */
+    count += 1;
+#endif
+
     pic->extra_sei.num_payloads = count;
 
     if( pic->extra_sei.num_payloads )
@@ -130,7 +135,94 @@ printf("pic->img.i_csp = %d [%s] bits = %d\n",
         }
     }
 
+#if SEI_TIMESTAMPING
+    x264_sei_payload_t *p;
+
+    /* Start time - Always the last SEI */
+    static uint32_t framecount = 0;
+    p = &pic->extra_sei.payloads[count - 1];
+    p->payload_type = USER_DATA_AVC_UNREGISTERED;
+    p->payload_size = SEI_TIMESTAMP_PAYLOAD_LENGTH;
+    p->payload = set_timestamp_alloc();
+
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+
+    set_timestamp_field_set(p->payload, 1, framecount);
+    set_timestamp_field_set(p->payload, 2, avfm_get_hw_received_tv_sec(&raw_frame->avfm));
+    set_timestamp_field_set(p->payload, 3, avfm_get_hw_received_tv_usec(&raw_frame->avfm));
+    set_timestamp_field_set(p->payload, 4, tv.tv_sec);
+    set_timestamp_field_set(p->payload, 5, tv.tv_usec);
+    set_timestamp_field_set(p->payload, 6, 0);
+    set_timestamp_field_set(p->payload, 7, 0);
+    set_timestamp_field_set(p->payload, 8, 0);
+    set_timestamp_field_set(p->payload, 9, 0);
+
+    /* The remaining 8 bytes (time exit from compressor fields)
+     * will be filled when the frame exists the compressor. */
+    framecount++;
+#endif
+
     return 0;
+}
+
+static int x264_image_compare(x264_image_t *a, x264_image_t *b)
+{
+	uint32_t plane_len[4] = { 0 };
+	for (int i = a->i_plane - 1; i > 0; i--) {
+		plane_len[i - 1] = a->plane[i] - a->plane[i - 1];
+	}
+	if (a->i_plane == 3) {
+		plane_len[2] = plane_len[1];
+	}
+
+	uint32_t alloc_size = 0;
+	for (int i = 0; i < a->i_plane; i++)
+		alloc_size += plane_len[i];
+
+	if (memcmp(a->plane[0], b->plane[0], alloc_size) != 0)
+		return 0;
+
+	return 1; /* Perfect copy. */
+
+}
+
+static void x264_picture_free(x264_picture_t *pic)
+{
+	free(pic->img.plane[0]);
+	free(pic);
+}
+
+static x264_picture_t *x264_picture_copy(x264_picture_t *pic)
+{
+	x264_picture_t *p = malloc(sizeof(*p));
+	memcpy(p, pic, sizeof(*p));
+
+	uint32_t plane_len[4] = { 0 };
+	for (int i = pic->img.i_plane - 1; i > 0; i--) {
+		plane_len[i - 1] = pic->img.plane[i] - pic->img.plane[i - 1];
+	}
+	if (pic->img.i_plane == 3) {
+		plane_len[2] = plane_len[1];
+	}
+
+	uint32_t alloc_size = 0;
+	for (int i = 0; i < pic->img.i_plane; i++)
+		alloc_size += plane_len[i];
+
+        for (int i = 0; i < pic->img.i_plane; i++) {
+
+                if (i == 0 && pic->img.plane[i]) {
+                        p->img.plane[i] = (uint8_t *)malloc(alloc_size);
+                        memcpy(p->img.plane[i], pic->img.plane[i], alloc_size);
+                }
+                if (i > 0) {
+                        p->img.plane[i] = p->img.plane[i - 1] + plane_len[i - 1];
+                }
+
+        }
+
+	return p;
 }
 
 static void *x264_start_encoder( void *ptr )
@@ -159,6 +251,39 @@ static void *x264_start_encoder( void *ptr )
 
     enc_params->avc_param.pf_log = x264_logger;
     //enc_params->avc_param.i_log_level = 65535;
+
+    printf("%d x %d\n", enc_params->avc_param.i_width, enc_params->avc_param.i_height);
+    printf("%d\n", enc_params->avc_param.i_fps_num);
+
+    if (h->obe_system == OBE_SYSTEM_TYPE_GENERIC) {
+        if ((enc_params->avc_param.i_width == 1920) && (enc_params->avc_param.i_height == 1080)) {
+            /* For 1080p60 we can't sustain realtime. Adjust some params. */
+            if ((enc_params->avc_param.i_fps_num > 30000) || ((enc_params->avc_param.i_fps_num < 1000) && (enc_params->avc_param.i_fps_num > 30))) {
+                /* For framerates above p30 assume worst case p60. */
+                if (enc_params->avc_param.i_threads < 8) {
+                    printf(MODULE "configuration threads defined as %d, need a minimum of 8. Adjusting to 8\n",
+                        enc_params->avc_param.i_threads);
+                    enc_params->avc_param.i_threads = 8;
+                }
+
+                if (enc_params->avc_param.i_keyint_max > 4) {
+                    printf(MODULE "configuration keyint defined as %d, need a maximum of 4. Adjusting to 4\n",
+                        enc_params->avc_param.i_keyint_max);
+                    enc_params->avc_param.i_keyint_max = 4;
+                }
+
+                if (enc_params->avc_param.rc.i_lookahead != enc_params->avc_param.i_keyint_max) {
+                    printf(MODULE "configuration lookahead defined as %d, need a maximum of %d. Adjusting to %d\n",
+                        enc_params->avc_param.rc.i_lookahead,
+                        enc_params->avc_param.i_keyint_max,
+                        enc_params->avc_param.i_keyint_max);
+                    enc_params->avc_param.rc.i_lookahead = enc_params->avc_param.i_keyint_max;
+                }
+            }
+        }
+    } else
+    if (h->obe_system == OBE_SYSTEM_TYPE_LOWEST_LATENCY || h->obe_system == OBE_SYSTEM_TYPE_LOW_LATENCY) {
+    }
 
 #if 0
     enc_params->avc_param.i_csp = X264_CSP_I422;
@@ -358,6 +483,21 @@ printf("Malloc failed\n");
 #endif
 
         frame_size = x264_encoder_encode( s, &nal, &i_nal, &pic, &pic_out );
+
+#if SEI_TIMESTAMPING
+        /* Walk through each of the NALS and insert current time into any LTN sei timestamp frames we find. */
+        for (int m = 0; m < i_nal; m++) {
+            int offset = ltn_uuid_find(&nal[m].p_payload[0], nal[m].i_payload);
+            if (offset >= 0) {
+                struct timeval tv;
+                gettimeofday(&tv, NULL);
+
+                /* Add the time exit from compressor seconds/useconds. */
+                set_timestamp_field_set(&nal[m].p_payload[offset], 6, tv.tv_sec);
+                set_timestamp_field_set(&nal[m].p_payload[offset], 7, tv.tv_usec);
+            }
+        }
+#endif /* SEI_TIMESTAMPING */
 
         arrival_time = raw_frame->arrival_time;
         raw_frame->release_data( raw_frame );
