@@ -182,6 +182,7 @@ int g_udp_output_drop_next_video_packet = 0;
 int g_udp_output_drop_next_audio_packet = 0;
 int g_udp_output_drop_next_packet = 0;
 int g_udp_output_stall_packet_ms = 0;
+int g_udp_output_latency_alert_ms = 0;
 #endif
 
 static void *open_output( void *ptr )
@@ -249,6 +250,18 @@ static void *open_output( void *ptr )
 
         for( int i = 0; i < num_muxed_data; i++ )
         {
+            if (g_udp_output_latency_alert_ms) {
+                static struct timeval lastPacketTime;
+                struct timeval now, diff;
+                gettimeofday(&now, NULL);
+                obe_timeval_subtract(&diff, &now, &lastPacketTime);
+                int64_t ms = obe_timediff_to_msecs(&diff);
+                if (ms >= g_udp_output_latency_alert_ms) {
+                    printf("udp inter-packet delay was %" PRIi64 "ms, too long.\n", ms);
+                }
+                lastPacketTime = now;
+            }
+
             if( output_dest->type == OUTPUT_RTP )
             {
                 if( write_rtp_pkt( ip_handle, &muxed_data[i]->data[7*sizeof(int64_t)], TS_PACKETS_SIZE, AV_RN64( muxed_data[i]->data ) ) < 0 )
