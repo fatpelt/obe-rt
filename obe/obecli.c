@@ -1115,6 +1115,7 @@ extern int g_udp_output_drop_next_video_packet;
 extern int g_udp_output_drop_next_audio_packet;
 extern int g_udp_output_drop_next_packet;
 extern int g_udp_output_stall_packet_ms;
+extern int g_udp_output_latency_alert_ms;
 
 /* LOS frame injection. */
 extern int g_decklink_inject_frame_enable;
@@ -1156,11 +1157,12 @@ void display_variables()
         g_udp_output_drop_next_video_packet);
     printf("udp_output.drop_next_audio_packet  = %d\n",
         g_udp_output_drop_next_audio_packet);
-    printf("udp_output.drop_next_packet  = %d\n",
+    printf("udp_output.drop_next_packet        = %d\n",
         g_udp_output_drop_next_packet);
-    printf("udp_output.stall_packet_ms  = %d\n",
+    printf("udp_output.stall_packet_ms         = %d\n",
         g_udp_output_stall_packet_ms);
-
+    printf("udp_output.latency_alert_ms        = %d\n",
+        g_udp_output_latency_alert_ms);
 }
 
 static int set_variable(char *command, obecli_command_t *child)
@@ -1213,6 +1215,9 @@ static int set_variable(char *command, obecli_command_t *child)
     } else
     if (strcasecmp(var, "udp_output.stall_packet_ms") == 0) {
         g_udp_output_stall_packet_ms = val;
+    } else
+    if (strcasecmp(var, "udp_output.latency_alert_ms") == 0) {
+        g_udp_output_latency_alert_ms = val;
     } else {
         printf("illegal variable name.\n");
         return -1;
