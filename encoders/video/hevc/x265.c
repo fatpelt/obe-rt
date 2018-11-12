@@ -313,6 +313,9 @@ static void *x265_start_encoder( void *ptr )
 	sprintf(val, "%dx%d", ctx->enc_params->avc_param.i_width, ctx->enc_params->avc_param.i_height);
 	x265_param_parse(ctx->hevc_params, "input-res", val);
 
+	if (getenv("OBE_X265_STREAM_INJECT_DETAILS") == NULL)
+		x265_param_parse(ctx->hevc_params, "info", "0");
+
 #if 0
 	/* TODO: tff or bff? we'll need to implement. */
 	if (ctx->enc_params->avc_param.b_interlaced) {
