@@ -379,7 +379,7 @@ static void convert_colorspace_and_parse_vanc(decklink_ctx_t *decklink_ctx, stru
 
     if (decklink_ctx->smpte2038_ctx) {
         if (smpte2038_packetizer_end(decklink_ctx->smpte2038_ctx,
-                                     decklink_ctx->stream_time / 300) == 0) {
+                                     decklink_ctx->stream_time / 300 + (10 * 90000)) == 0) {
 
             if (transmit_pes_to_muxer(decklink_ctx, decklink_ctx->smpte2038_ctx->buf,
                                       decklink_ctx->smpte2038_ctx->bufused) < 0) {
