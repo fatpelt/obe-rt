@@ -104,7 +104,7 @@ const static struct obe_to_decklink_video video_format_tab[] =
     { INPUT_VIDEO_FORMAT_720P_60,         bmdModeHD720p60,      1,    60,    1, 1280,  720, "1280x720p60", },
     { INPUT_VIDEO_FORMAT_1080I_50,        bmdModeHD1080i50,     1,    25,    0, 1920,  540, "1920x1080i25", },
     { INPUT_VIDEO_FORMAT_1080I_5994,      bmdModeHD1080i5994,   1001, 30000, 0, 1920,  540, "1920x1080i59.94", },
-    { INPUT_VIDEO_FORMAT_1080I_60,        bmdModeHD1080i6000,   1,    60,    0, 1920,  540, "1920x1080i60", },
+    { INPUT_VIDEO_FORMAT_1080I_60,        bmdModeHD1080i6000,   1,    30,    0, 1920,  540, "1920x1080i60", },
     { INPUT_VIDEO_FORMAT_1080P_2398,      bmdModeHD1080p2398,   1001, 24000, 1, 1920, 1080, "1920x1080p23.98", },
     { INPUT_VIDEO_FORMAT_1080P_24,        bmdModeHD1080p24,     1,    24,    1, 1920, 1080, "1920x1080p24", },
     { INPUT_VIDEO_FORMAT_1080P_25,        bmdModeHD1080p25,     1,    25,    1, 1920, 1080, "1920x1080p25", },
