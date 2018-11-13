@@ -346,6 +346,12 @@ static void *x265_start_encoder( void *ptr )
 	sprintf(&val[0], "%d", ctx->enc_params->avc_param.rc.i_vbv_max_bitrate);
 	x265_param_parse(ctx->hevc_params, "vbv-maxrate", val);
 
+	if (ctx->enc_params->avc_param.i_threads < 8) {
+		printf(MESSAGE_PREFIX "configuration threads defined as %d, need a minimum of 8. Adjusting to 8\n",
+			ctx->enc_params->avc_param.i_threads);
+ 
+		ctx->enc_params->avc_param.i_threads = 8;
+	}
 	/* 0 Is preferred, which is 'autodetect' */
 	sprintf(&val[0], "%d", ctx->enc_params->avc_param.i_threads);
 	x265_param_parse(ctx->hevc_params, "frame-threads", val);
