@@ -982,7 +982,12 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
            audioframe->GetPacketTime(&atime, OBE_CLOCK);
         }
 
-        printf("vtime %" PRIi64 ":%" PRIi64 "  atime %" PRIi64 ":%" PRIi64 "  vduration %" PRIi64 "                a-vdiff: %" PRIi64,
+        if (vtime == 0)
+            last_vtime = 0;
+        if (atime == 0)
+            last_atime = 0;
+
+        printf("vtime %012" PRIi64 ":%" PRIi64 "  atime %012" PRIi64 ":%" PRIi64 "  vduration %" PRIi64 " a-vdiff: %" PRIi64,
             vtime,
             vtime - last_vtime,
             atime,
@@ -993,10 +998,13 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
         BMDTimeValue adiff = atime - last_atime;
 
         if (last_vtime && (vtime - last_vtime != 450450)) {
-            printf("Bad video interval\n");
+            if (last_vtime && (vtime - last_vtime != 900900)) {
+                printf(" Bad video interval\n");
+            } else
+                printf("\n");
         } else
         if (last_atime && (adiff != 450000) && (adiff != 450562) && (adiff != 450563)) {
-            printf("Bad audio interval\n");
+            printf(" Bad audio interval\n");
         } else
             printf("\n");
 
