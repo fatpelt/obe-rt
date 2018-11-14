@@ -66,6 +66,18 @@ static void *start_encoder_mp2( void *ptr )
     obe_raw_frame_t *raw_frame;
     obe_coded_frame_t *coded_frame;
 
+    /* Interesting 10.8.5 quirk related to the audio clock occasionally being ahead
+     * of the video clock. This translates into 'too much' data in the audio fifo.
+     * Because we previously used to put the same timestamp on multiple packets, or overly
+     * adjust the PTS, things break.
+     * The right approach is to accurately track the timestamp based on the head of the fifo,
+     * so enable this feature by default.
+     * If this is deemed risky, we could always enable it for 480i and 576i only..... but
+     * I think we should go ahead, fully retest and just enable this better time calculation
+     * mechanism.
+     */
+    enc_params->use_fifo_head_timing = 1;
+
     struct historical_int64_s rf_pts;
     historical_int64_init(&rf_pts);
 
