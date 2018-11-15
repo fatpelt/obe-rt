@@ -91,10 +91,10 @@ printf("pic->img.i_csp = %d [%s] bits = %d\n",
         }
     }
 
-#if SEI_TIMESTAMPING
-    /* Create space for unregister data, containing before and after timestamps. */
-    count += 1;
-#endif
+    if (g_sei_timestamping) {
+        /* Create space for unregister data, containing before and after timestamps. */
+        count += 1;
+    }
 
     pic->extra_sei.num_payloads = count;
 
@@ -135,33 +135,33 @@ printf("pic->img.i_csp = %d [%s] bits = %d\n",
         }
     }
 
-#if SEI_TIMESTAMPING
-    x264_sei_payload_t *p;
+    if (g_sei_timestamping) {
+        x264_sei_payload_t *p;
 
-    /* Start time - Always the last SEI */
-    static uint32_t framecount = 0;
-    p = &pic->extra_sei.payloads[count - 1];
-    p->payload_type = USER_DATA_AVC_UNREGISTERED;
-    p->payload_size = SEI_TIMESTAMP_PAYLOAD_LENGTH;
-    p->payload = set_timestamp_alloc();
+        /* Start time - Always the last SEI */
+        static uint32_t framecount = 0;
+        p = &pic->extra_sei.payloads[count - 1];
+        p->payload_type = USER_DATA_AVC_UNREGISTERED;
+        p->payload_size = SEI_TIMESTAMP_PAYLOAD_LENGTH;
+        p->payload = set_timestamp_alloc();
 
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
+        struct timeval tv;
+        gettimeofday(&tv, NULL);
 
-    set_timestamp_field_set(p->payload, 1, framecount);
-    set_timestamp_field_set(p->payload, 2, avfm_get_hw_received_tv_sec(&raw_frame->avfm));
-    set_timestamp_field_set(p->payload, 3, avfm_get_hw_received_tv_usec(&raw_frame->avfm));
-    set_timestamp_field_set(p->payload, 4, tv.tv_sec);
-    set_timestamp_field_set(p->payload, 5, tv.tv_usec);
-    set_timestamp_field_set(p->payload, 6, 0);
-    set_timestamp_field_set(p->payload, 7, 0);
-    set_timestamp_field_set(p->payload, 8, 0);
-    set_timestamp_field_set(p->payload, 9, 0);
+        set_timestamp_field_set(p->payload, 1, framecount);
+        set_timestamp_field_set(p->payload, 2, avfm_get_hw_received_tv_sec(&raw_frame->avfm));
+        set_timestamp_field_set(p->payload, 3, avfm_get_hw_received_tv_usec(&raw_frame->avfm));
+        set_timestamp_field_set(p->payload, 4, tv.tv_sec);
+        set_timestamp_field_set(p->payload, 5, tv.tv_usec);
+        set_timestamp_field_set(p->payload, 6, 0);
+        set_timestamp_field_set(p->payload, 7, 0);
+        set_timestamp_field_set(p->payload, 8, 0);
+        set_timestamp_field_set(p->payload, 9, 0);
 
-    /* The remaining 8 bytes (time exit from compressor fields)
-     * will be filled when the frame exists the compressor. */
-    framecount++;
-#endif
+        /* The remaining 8 bytes (time exit from compressor fields)
+         * will be filled when the frame exists the compressor. */
+        framecount++;
+    }
 
     return 0;
 }
@@ -484,20 +484,20 @@ printf("Malloc failed\n");
 
         frame_size = x264_encoder_encode( s, &nal, &i_nal, &pic, &pic_out );
 
-#if SEI_TIMESTAMPING
-        /* Walk through each of the NALS and insert current time into any LTN sei timestamp frames we find. */
-        for (int m = 0; m < i_nal; m++) {
-            int offset = ltn_uuid_find(&nal[m].p_payload[0], nal[m].i_payload);
-            if (offset >= 0) {
-                struct timeval tv;
-                gettimeofday(&tv, NULL);
+        if (g_sei_timestamping) {
+            /* Walk through each of the NALS and insert current time into any LTN sei timestamp frames we find. */
+            for (int m = 0; m < i_nal; m++) {
+                int offset = ltn_uuid_find(&nal[m].p_payload[0], nal[m].i_payload);
+                if (offset >= 0) {
+                    struct timeval tv;
+                    gettimeofday(&tv, NULL);
 
-                /* Add the time exit from compressor seconds/useconds. */
-                set_timestamp_field_set(&nal[m].p_payload[offset], 6, tv.tv_sec);
-                set_timestamp_field_set(&nal[m].p_payload[offset], 7, tv.tv_usec);
+                    /* Add the time exit from compressor seconds/useconds. */
+                    set_timestamp_field_set(&nal[m].p_payload[offset], 6, tv.tv_sec);
+                    set_timestamp_field_set(&nal[m].p_payload[offset], 7, tv.tv_usec);
+                }
             }
         }
-#endif /* SEI_TIMESTAMPING */
 
         arrival_time = raw_frame->arrival_time;
         raw_frame->release_data( raw_frame );

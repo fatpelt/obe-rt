@@ -31,6 +31,8 @@
 
 #define MESSAGE_PREFIX "[x265]:"
 
+int g_x265_monitor_bps = 0;
+
 #define SERIALIZE_CODED_FRAMES 0
 #if SERIALIZE_CODED_FRAMES
 static FILE *sfh = NULL;
@@ -143,10 +145,10 @@ static int convert_obe_to_x265_pic(struct context_s *ctx, x265_picture *p, struc
 		}
 	}
 
-#if SEI_TIMESTAMPING
-	/* Create space for unregister data, containing before and after timestamps. */
-	count += 1;
-#endif
+	if (g_sei_timestamping) {
+		/* Create space for unregister data, containing before and after timestamps. */
+		count += 1;
+	}
 
 	p->userSEI.numPayloads = count;
 
@@ -178,33 +180,33 @@ static int convert_obe_to_x265_pic(struct context_s *ctx, x265_picture *p, struc
 		}
 	}
 
-#if SEI_TIMESTAMPING
-	x265_sei_payload *x;
+	if (g_sei_timestamping) {
+		x265_sei_payload *x;
 
-	/* Start time - Always the last SEI */
-	static uint32_t framecount = 0;
-	x = &p->userSEI.payloads[count - 1];
-	x->payloadType = USER_DATA_AVC_UNREGISTERED;
-	x->payloadSize = SEI_TIMESTAMP_PAYLOAD_LENGTH;
-	x->payload = set_timestamp_alloc(); /* Freed when we enter the function prior to pic re-init. */
+		/* Start time - Always the last SEI */
+		static uint32_t framecount = 0;
+		x = &p->userSEI.payloads[count - 1];
+		x->payloadType = USER_DATA_AVC_UNREGISTERED;
+		x->payloadSize = SEI_TIMESTAMP_PAYLOAD_LENGTH;
+		x->payload = set_timestamp_alloc(); /* Freed when we enter the function prior to pic re-init. */
 
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
+		struct timeval tv;
+		gettimeofday(&tv, NULL);
 
-	set_timestamp_field_set(x->payload, 1, framecount);
-	set_timestamp_field_set(x->payload, 2, avfm_get_hw_received_tv_sec(&rf->avfm));
-	set_timestamp_field_set(x->payload, 3, avfm_get_hw_received_tv_usec(&rf->avfm));
-	set_timestamp_field_set(x->payload, 4, tv.tv_sec);
-	set_timestamp_field_set(x->payload, 5, tv.tv_usec);
-	set_timestamp_field_set(x->payload, 6, 0);
-	set_timestamp_field_set(x->payload, 7, 0);
-	set_timestamp_field_set(x->payload, 8, 0);
-	set_timestamp_field_set(x->payload, 9, 0);
+		set_timestamp_field_set(x->payload, 1, framecount);
+		set_timestamp_field_set(x->payload, 2, avfm_get_hw_received_tv_sec(&rf->avfm));
+		set_timestamp_field_set(x->payload, 3, avfm_get_hw_received_tv_usec(&rf->avfm));
+		set_timestamp_field_set(x->payload, 4, tv.tv_sec);
+		set_timestamp_field_set(x->payload, 5, tv.tv_usec);
+		set_timestamp_field_set(x->payload, 6, 0);
+		set_timestamp_field_set(x->payload, 7, 0);
+		set_timestamp_field_set(x->payload, 8, 0);
+		set_timestamp_field_set(x->payload, 9, 0);
 
-	/* The remaining 8 bytes (time exit from compressor fields)
-	 * will be filled when the frame exists the compressor. */
-	framecount++;
-#endif
+		/* The remaining 8 bytes (time exit from compressor fields)
+		 * will be filled when the frame exists the compressor. */
+		framecount++;
+	}
 
 	return 0;
 }
@@ -269,6 +271,33 @@ static int dispatch_payload(struct context_s *ctx, const unsigned char *buf, int
 	}
 
 	return 0;
+}
+
+static void _monitor_bps(struct context_s *ctx, int lengthBytes)
+{
+	/* Monitor bps for sanity... */
+	static int codec_bps_current = 0;
+	static int codec_bps = 0;
+	static time_t codec_bps_time = 0;
+	time_t now;
+	time(&now);
+	if (now != codec_bps_time) {
+		codec_bps = codec_bps_current;
+		codec_bps_current = 0;
+		codec_bps_time = now;
+		double dbps = (double)codec_bps;
+		dbps /= 1e6;
+		if (dbps >= ctx->enc_params->avc_param.rc.i_vbv_max_bitrate) {
+			fprintf(stderr, MESSAGE_PREFIX " codec output %d bps exceeds vbv_max_bitrate %d @ %s",
+				codec_bps,
+				ctx->enc_params->avc_param.rc.i_vbv_max_bitrate,
+				ctime(&now));
+		}
+		if (g_x265_monitor_bps) {
+			printf(MESSAGE_PREFIX " codec output %.02f (Mb/ps) @ %s", dbps, ctime(&now));
+		}
+	}
+	codec_bps_current += (lengthBytes * 8);
 }
 
 /* OBE will pass us a AVC struct initially. Pull out any important pieces
@@ -478,21 +507,21 @@ static void *x265_start_encoder( void *ptr )
 				ret = x265_encoder_encode(ctx->hevc_encoder, &ctx->hevc_nals, &ctx->i_nal, ctx->hevc_picture_in, ctx->hevc_picture_out);
 			}
 
-#if SEI_TIMESTAMPING
-			/* Walk through each of the NALS and insert current time into any LTN sei timestamp frames we find. */
-			for (int m = 0; m < ctx->i_nal; m++) {
-				int offset = ltn_uuid_find(&ctx->hevc_nals[m].payload[0], ctx->hevc_nals[m].sizeBytes);
-				if (offset >= 0) {
+			if (g_sei_timestamping) {
+				/* Walk through each of the NALS and insert current time into any LTN sei timestamp frames we find. */
+				for (int m = 0; m < ctx->i_nal; m++) {
+					int offset = ltn_uuid_find(&ctx->hevc_nals[m].payload[0], ctx->hevc_nals[m].sizeBytes);
+					if (offset >= 0) {
 
-					struct timeval tv;
-					gettimeofday(&tv, NULL);
+						struct timeval tv;
+						gettimeofday(&tv, NULL);
 
-					/* Add the time exit from compressor seconds/useconds. */
-					set_timestamp_field_set(&ctx->hevc_nals[m].payload[offset], 6, tv.tv_sec);
-					set_timestamp_field_set(&ctx->hevc_nals[m].payload[offset], 7, tv.tv_usec);
+						/* Add the time exit from compressor seconds/useconds. */
+						set_timestamp_field_set(&ctx->hevc_nals[m].payload[offset], 6, tv.tv_sec);
+						set_timestamp_field_set(&ctx->hevc_nals[m].payload[offset], 7, tv.tv_usec);
+					}
 				}
 			}
-#endif
 
 			int64_t arrival_time = 0;
 			if (rf) {
@@ -531,6 +560,9 @@ static void *x265_start_encoder( void *ptr )
 
 				dispatch_payload(ctx, nalbuffer, nalbuffer_size, arrival_time);
 				free(nalbuffer);
+
+				/* Monitor bps for sanity... */
+				_monitor_bps(ctx, nalbuffer_size);
 
 			} /* if nal_bytes > 0 */
 

@@ -1122,6 +1122,12 @@ extern int64_t ac3_offset_ms;
 /* Mux */
 extern int64_t initial_audio_latency;
 
+/* x265 */
+extern int g_x265_monitor_bps;
+
+/* SEI Timestamping. */
+extern int g_sei_timestamping;
+
 /* Mux Smoother */
 extern int64_t g_mux_smoother_last_item_count;
 extern int64_t g_mux_smoother_last_total_item_size;
@@ -1156,6 +1162,15 @@ void display_variables()
 
     printf("audio_encoder.ac3_offset_ms = %" PRIi64 "\n", ac3_offset_ms);
     printf("audio_encoder.last_pts = %" PRIi64 "\n", cur_pts);
+
+    printf("video_encoder.sei_timestamping = %d [%s]\n",
+        g_sei_timestamping,
+        g_sei_timestamping == 0 ? "disabled" : "enabled");
+
+    printf("codec.x265.monitor_bps = %d [%s]\n",
+        g_x265_monitor_bps,
+        g_x265_monitor_bps == 0 ? "disabled" : "enabled");
+
     printf("video_encoder.last_pts = %" PRIi64 "\n", cpb_removal_time);
     printf("v - a                  = %" PRIi64 "  %" PRIi64 "(ms)\n", cpb_removal_time - cur_pts,
         (cpb_removal_time - cur_pts) / 27000);
@@ -1236,6 +1251,12 @@ static int set_variable(char *command, obecli_command_t *child)
     } else
     if (strcasecmp(var, "udp_output.latency_alert_ms") == 0) {
         g_udp_output_latency_alert_ms = val;
+    } else
+    if (strcasecmp(var, "codec.x265.monitor_bps") == 0) {
+        g_x265_monitor_bps = val;
+    } else
+    if (strcasecmp(var, "video_encoder.sei_timestamping") == 0) {
+        g_sei_timestamping = val;
     } else {
         printf("illegal variable name.\n");
         return -1;

@@ -1,7 +1,7 @@
 #ifndef SEI_TIMESTAMP_H
 #define SEI_TIMESTAMP_H
 
-#define SEI_TIMESTAMPING 0
+#define SEI_TIMESTAMPING 1
 
 #if SEI_TIMESTAMPING
 
@@ -11,6 +11,7 @@
 #define SEI_BIT_DELIMITER 0x81
 
 extern const unsigned char ltn_uuid_sei_timestamp[16];
+extern int g_sei_timestamping;
 
 /* Format of LTN_SEI_TAG_START_TIME record:
  * All records are big endian.
