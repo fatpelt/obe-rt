@@ -359,7 +359,7 @@ static void *x265_start_encoder( void *ptr )
 	ctx->hevc_params->internalCsp = X265_CSP_I420;
 	x265_param_parse(ctx->hevc_params, "repeat-headers", "1");
 
-	sprintf(&val[0], "%.3f", (float)ctx->enc_params->avc_param.i_fps_num / (float)ctx->enc_params->avc_param.i_fps_den); 
+	sprintf(&val[0], "%d/%d", ctx->enc_params->avc_param.i_fps_num, ctx->enc_params->avc_param.i_fps_den);
 	x265_param_parse(ctx->hevc_params, "fps", val);
 
 	sprintf(&val[0], "%d",ctx->enc_params->avc_param.i_keyint_max);
