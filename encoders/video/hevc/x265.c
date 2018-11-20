@@ -108,6 +108,15 @@ static int convert_obe_to_x265_pic(struct context_s *ctx, x265_picture *p, struc
 	obe_image_t *img = &rf->img;
 	int count = 0, idx = 0;
 
+#if 0
+	/* Save raw image to disk. Its 8bit. Convert for viewing purposes.
+	 * Interlaced content will still be interlaced.
+	 * Convert to png with:
+	 * ffmpeg -y -f rawvideo -pix_fmt yuv420p -s 1920x1080 -i video-frame-00000413.yuv -vframes 1 new.png
+	 */
+	obe_image_save(&rf->img);
+#endif
+
 	/* Dealloc any previous SEI pointers and payload, if we had any. */
 	if (p->userSEI.numPayloads) {
 		for (int i = 0; i < p->userSEI.numPayloads; i++) {
