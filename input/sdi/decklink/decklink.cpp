@@ -1255,6 +1255,22 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
 
         videoframe->GetBytes( &frame_bytes );
 
+#if 0
+        /* Save every frame as raw data (keeping the last 16 only). To view it, and presevent any field ordering.... 
+         * /tmp/ffmpeg -y -f image2pipe -vcodec v210 -s 1920x1080 -frame_size 5529600 -i /tmp/raw-9.bin -vframes 1 new.png
+         */
+        {
+            static int fc = 0;
+            char fn[256];
+            sprintf(&fn[0], "/tmp/raw-%d.bin", fc++);
+            if (fc >= 16)
+                fc = 0;
+            FILE *fh = fopen(fn, "wb");
+            fwrite(frame_bytes, stride, height, fh);
+            fclose(fh);
+        }
+#endif
+
 #if WRITE_OSD_VALUE
 	static uint32_t xxx = 0;
 	V210_write_32bit_value(frame_bytes, stride, xxx++, 100);
