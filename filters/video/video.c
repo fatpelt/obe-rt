@@ -398,6 +398,10 @@ static int dither_image( obe_raw_frame_t *raw_frame, int16_t *error_buf )
 
 #endif
 
+/* For a traditional interlaced frame, downsample the chroma
+ * converting a frame of PIX_FMT_YUV422P10 to PIX_FMT_YUV420P10
+ * Limited to 10bit pixels only.
+ */
 static int downconvert_image_interlaced( obe_vid_filter_ctx_t *vfilt, obe_raw_frame_t *raw_frame )
 {
     obe_image_t *img = &raw_frame->img;
