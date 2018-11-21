@@ -453,6 +453,7 @@ static int downconvert_image_interlaced( obe_vid_filter_ctx_t *vfilt, obe_raw_fr
     return 0;
 }
 
+/* Convert from 10bit to 8bit and apply a video dither. */
 static int dither_image( obe_vid_filter_ctx_t *vfilt, obe_raw_frame_t *raw_frame )
 {
     obe_image_t *img = &raw_frame->img;
@@ -744,13 +745,16 @@ static void *start_filter_video( void *ptr )
         /* Downconvert using interlaced scaling if input is 4:2:2 and target is 4:2:0 */
         if( h_shift == 1 && v_shift == 0 && filter_params->target_csp == X264_CSP_I420 )
         {
+            /* Convert from YUV422P10 to YUV420P10, chroma subsample, specific to interlaced. */
             if( downconvert_image_interlaced( vfilt, raw_frame ) < 0 )
                 goto end;
+//PRINT_OBE_IMAGE(&raw_frame->img, "DownCo POST      ");
         }
 
         pfd = av_pix_fmt_desc_get( raw_frame->img.csp );
         if( pfd->comp[0].depth_minus1+1 == 10 && X264_BIT_DEPTH == 8 )
         {
+            /* Convert from 10bit to 8bit and apply a video dither. */
             if( dither_image( vfilt, raw_frame ) < 0 )
                 goto end;
         }
