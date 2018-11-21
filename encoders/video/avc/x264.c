@@ -166,6 +166,7 @@ printf("pic->img.i_csp = %d [%s] bits = %d\n",
     return 0;
 }
 
+#if 0
 static int x264_image_compare(x264_image_t *a, x264_image_t *b)
 {
 	uint32_t plane_len[4] = { 0 };
@@ -224,6 +225,7 @@ static x264_picture_t *x264_picture_copy(x264_picture_t *pic)
 
 	return p;
 }
+#endif
 
 static void *x264_start_encoder( void *ptr )
 {
