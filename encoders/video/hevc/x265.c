@@ -28,6 +28,7 @@
 #include <x265.h>
 
 #define LOCAL_DEBUG 0
+#define NAL_DEBUG 0
 
 #define MESSAGE_PREFIX "[x265]:"
 
@@ -228,14 +229,13 @@ static int dispatch_payload(struct context_s *ctx, const unsigned char *buf, int
 		return -1;
 	}
 
-#if LOCAL_DEBUG
+#if NAL_DEBUG
 	printf(MESSAGE_PREFIX " --  acquired %7d nal bytes, pts = %12" PRIi64 " dts = %12" PRIi64 ", ",
 		lengthBytes,
 		ctx->hevc_picture_out->pts,
 		ctx->hevc_picture_out->dts);
-	printf("poc %8d  sliceType %d [%s]\n",
-		ctx->hevc_picture_out->poc, ctx->hevc_picture_out->sliceType,
-		sliceTypeLookup(ctx->hevc_picture_out->sliceType));
+	printf("poc %8d  sliceType %d\n",
+		ctx->hevc_picture_out->poc, ctx->hevc_picture_out->sliceType);
 #endif
 
 	struct userdata_s *out_ud = ctx->hevc_picture_out->userData; 
