@@ -478,27 +478,34 @@ static void *x265_start_encoder( void *ptr )
 #endif
 
 	char val[64];
-	sprintf(val, "%dx%d", ctx->enc_params->avc_param.i_width, ctx->enc_params->avc_param.i_height);
+	if (ctx->enc_params->avc_param.b_interlaced) {
+		sprintf(val, "%dx%d",
+			ctx->enc_params->avc_param.i_width,
+			ctx->enc_params->avc_param.i_height / 2);
+	} else {
+		sprintf(val, "%dx%d", ctx->enc_params->avc_param.i_width, ctx->enc_params->avc_param.i_height);
+	}
 	x265_param_parse(ctx->hevc_params, "input-res", val);
 
 	if (getenv("OBE_X265_STREAM_INJECT_DETAILS") == NULL)
 		x265_param_parse(ctx->hevc_params, "info", "0");
 
-#if 0
 	/* TODO: tff or bff? we'll need to implement. */
 	if (ctx->enc_params->avc_param.b_interlaced) {
-		x265_param_parse(ctx->hevc_params, "interlace", "1");
-	}
-	else
+		x265_param_parse(ctx->hevc_params, "interlace", "tff");
+	} else {
 		x265_param_parse(ctx->hevc_params, "interlace", "0");
-#else
-	x265_param_parse(ctx->hevc_params, "interlace", "0");
-#endif
+	}
 
 	ctx->hevc_params->internalCsp = X265_CSP_I420;
 	x265_param_parse(ctx->hevc_params, "repeat-headers", "1");
 
-	sprintf(&val[0], "%d/%d", ctx->enc_params->avc_param.i_fps_num, ctx->enc_params->avc_param.i_fps_den);
+	if (ctx->enc_params->avc_param.b_interlaced) {
+		/* X265 wants the rate in fields per second, instead of (progressive) frames per second. */
+		sprintf(&val[0], "%d/%d", ctx->enc_params->avc_param.i_fps_num * 2, ctx->enc_params->avc_param.i_fps_den);
+	} else {
+		sprintf(&val[0], "%d/%d", ctx->enc_params->avc_param.i_fps_num, ctx->enc_params->avc_param.i_fps_den);
+	}
 	x265_param_parse(ctx->hevc_params, "fps", val);
 
 	sprintf(&val[0], "%d",ctx->enc_params->avc_param.i_keyint_max);
@@ -607,7 +614,6 @@ static void *x265_start_encoder( void *ptr )
 #if LOCAL_DEBUG
 		//printf(MESSAGE_PREFIX " popped a raw frame[%" PRIu64 "] -- pts %" PRIi64 "\n", ctx->raw_frame_count, rf->avfm.audio_pts);
 #endif
-
 
 		struct userdata_s *ud = userdata_calloc();
 
