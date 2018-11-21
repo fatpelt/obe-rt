@@ -101,6 +101,136 @@ static const char *sliceTypeLookup(uint32_t type)
 }
 #endif
 
+/* TODO: Duplicated from video.c */
+typedef struct
+{
+	int planes;
+	float width[4];
+	float height[4];
+	int mod_width;
+	int mod_height;
+	int bit_depth;
+} obe_cli_csp_t;
+
+const static obe_cli_csp_t obe_cli_csps[] =
+{
+	[PIX_FMT_YUV420P]   = { 3, { 1, .5, .5 }, { 1, .5, .5 }, 2, 2,  8 },
+	[PIX_FMT_NV12]      = { 2, { 1,  1 },     { 1, .5 },     2, 2,  8 },
+	[PIX_FMT_YUV420P10] = { 3, { 1, .5, .5 }, { 1, .5, .5 }, 2, 2, 10 },
+	[PIX_FMT_YUV422P10] = { 3, { 1, .5, .5 }, { 1, 1, 1 },   2, 2, 10 },
+	[PIX_FMT_YUV420P16] = { 3, { 1, .5, .5 }, { 1, .5, .5 }, 2, 2, 16 },
+};
+
+static int csp_num_interleaved( int csp, int plane )
+{
+	return (csp == PIX_FMT_NV12 && plane == 1) ? 2 : 1;
+}
+/* end -- Duplicated from video.c */
+
+/* Free the shallow copy. */
+static void x265_picture_free_all(x265_picture *pic)
+{
+	/* Originally I was copying the planes also. We
+	 * can probably refactor this function away.
+	 */
+#if 0
+	free(pic->planes[0]);
+#endif
+	x265_picture_free(pic);
+}
+
+/* Shallow copy the object. */
+static x265_picture *x265_picture_copy(x265_picture *pic)
+{
+	x265_picture *p = malloc(sizeof(*p));
+	memcpy(p, pic, sizeof(*p));
+
+#if 0
+	/* Copy all of the planes. */
+	uint32_t plane_len[4] = { 0 };
+	for (int i = 2; i > 0; i--) {
+		plane_len[i - 1] = pic->planes[i] - pic->planes[i - 1];
+	}
+	if (3) {
+		plane_len[2] = plane_len[1];
+	}
+
+	uint32_t alloc_size = 0;
+	for (int i = 0; i < 3; i++)
+		alloc_size += plane_len[i];
+
+        for (int i = 0; i < 3; i++) {
+
+                if (i == 0 && pic->planes[i]) {
+                        p->planes[i] = (uint8_t *)malloc(alloc_size);
+                        memcpy(p->planes[i], pic->planes[i], alloc_size);
+                }
+                if (i > 0) {
+                        p->planes[i] = p->planes[i - 1] + plane_len[i - 1];
+                }
+
+        }
+#endif
+
+	return p;
+}
+
+/* Convert an 8bit interleaved pair of fields into TFF top/bottom image. */
+static int convert_interleaved_to_topbottom(struct context_s *ctx, obe_raw_frame_t *raw_frame)
+{
+	/* Create a new image, copy/reformat the source image then discard it. */
+	obe_image_t *img = &raw_frame->img;
+	obe_image_t tmp_image = {0};
+	obe_image_t *out = &tmp_image;
+
+	tmp_image.csp = img->csp == PIX_FMT_YUV422P10 ? PIX_FMT_YUV422P : PIX_FMT_YUV420P;
+	tmp_image.width = raw_frame->img.width;
+	tmp_image.height = raw_frame->img.height;
+	tmp_image.planes = av_pix_fmt_descriptors[tmp_image.csp].nb_components;
+	tmp_image.format = raw_frame->img.format;
+
+	if (av_image_alloc(tmp_image.plane, tmp_image.stride, tmp_image.width, tmp_image.height + 1, tmp_image.csp, 16) < 0) {
+		syslog(LOG_ERR, "%s() Malloc failed", __func__);
+		return -1;
+	}
+
+	for (int i = 0; i < img->planes; i++) {
+
+		int num_interleaved = csp_num_interleaved(img->csp, i);
+		int height = obe_cli_csps[img->csp].height[i] * img->height;
+		int width = obe_cli_csps[img->csp].width[i] * img->width / num_interleaved;
+/*
+plane0 num_interleaved 1 width 1920 height 1080
+plane1 num_interleaved 1 width 960 height 540
+plane2 num_interleaved 1 width 960 height 540
+*/
+		/* Lets assume the first row belongs in the first field (TFF). */
+		uint8_t *src = img->plane[i];
+		uint8_t *dstTop = out->plane[i];
+		uint8_t *dstBottom = out->plane[i] + ((width * height) / 2);
+
+		for (int j = 0; j < height / 2; j++) {
+
+			/* First field. */
+			memcpy(dstTop, src, width);
+			src += img->stride[i];
+			dstTop += out->stride[i];
+
+			/* Second field. */
+			memcpy(dstBottom, src, width);
+			src += img->stride[i];
+			dstBottom += out->stride[i];
+
+		}
+	}
+
+	raw_frame->release_data(raw_frame);
+	memcpy(&raw_frame->alloc_img, &tmp_image, sizeof(obe_image_t));
+	memcpy(&raw_frame->img, &raw_frame->alloc_img, sizeof(obe_image_t));
+
+	return 0;
+}
+
 /* Convert a obe_raw_frame_t into a x264_picture_t struct.
  * Incoming frame is colorspace YUV420P.
  */
