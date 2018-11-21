@@ -536,9 +536,16 @@ static void *x265_start_encoder( void *ptr )
 	if (getenv("OBE_X265_STREAM_INJECT_DETAILS") == NULL)
 		x265_param_parse(ctx->hevc_params, "info", "0");
 
-	/* TODO: tff or bff? we'll need to implement. */
+	/* The decklink module sets TFF to always true for interlaced formats, which isn't technically
+         * correct. NTSC is BFF. A comment suggests NTSC should be BFF but is packed as TFF.
+         * We'll obey the params here, and leave this comment that NTSC could be wrong if the original
+         * packing issues was specific to a decklink driver version.
+         */
 	if (ctx->enc_params->avc_param.b_interlaced) {
-		x265_param_parse(ctx->hevc_params, "interlace", "tff");
+		if (ctx->enc_params->avc_param.b_tff)
+			x265_param_parse(ctx->hevc_params, "interlace", "tff");
+		else
+			x265_param_parse(ctx->hevc_params, "interlace", "bff");
 	} else {
 		x265_param_parse(ctx->hevc_params, "interlace", "0");
 	}
