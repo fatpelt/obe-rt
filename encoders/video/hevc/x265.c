@@ -239,6 +239,12 @@ static int convert_obe_to_x265_pic(struct context_s *ctx, x265_picture *p, struc
 	obe_image_t *img = &rf->img;
 	int count = 0, idx = 0;
 
+	if (ctx->enc_params->avc_param.b_interlaced) {
+		/* Convert from traditional interlaced interleaved lines to a top/bottom image. */
+		/* TODO: deal with field dominance. */
+		convert_interleaved_to_topbottom(ctx, rf);
+	}
+
 #if 0
 	/* Save raw image to disk. Its 8bit. Convert for viewing purposes.
 	 * Interlaced content will still be interlaced.
@@ -437,6 +443,46 @@ static void _monitor_bps(struct context_s *ctx, int lengthBytes)
 		}
 	}
 	codec_bps_current += (lengthBytes * 8);
+}
+
+static void _process_nals(struct context_s *ctx, int64_t arrival_time)
+{
+	if (ctx->i_nal == 0)
+		return;
+
+	if (g_sei_timestamping) {
+		/* Walk through each of the NALS and insert current time into any LTN sei timestamp frames we find. */
+		for (int m = 0; m < ctx->i_nal; m++) {
+			int offset = ltn_uuid_find(&ctx->hevc_nals[m].payload[0], ctx->hevc_nals[m].sizeBytes);
+			if (offset >= 0) {
+				struct timeval tv;
+				gettimeofday(&tv, NULL);
+
+				/* Add the time exit from compressor seconds/useconds. */
+				set_timestamp_field_set(&ctx->hevc_nals[m].payload[offset], 6, tv.tv_sec);
+				set_timestamp_field_set(&ctx->hevc_nals[m].payload[offset], 7, tv.tv_usec);
+			}
+		}
+	}
+
+	/* Collapse N nals into a single allocation, so we can submit a single coded_frame, with a single clock. */
+	int nalbuffer_size = 0;
+	for (int z = 0; z < ctx->i_nal; z++) {
+		nalbuffer_size += ctx->hevc_nals[z].sizeBytes;
+	}
+
+	unsigned char *nalbuffer = malloc(((nalbuffer_size / getpagesize()) + 1) * getpagesize());
+	int offset = 0;
+	for (int z = 0; z < ctx->i_nal; z++) {
+		memcpy(nalbuffer + offset, ctx->hevc_nals[z].payload, ctx->hevc_nals[z].sizeBytes);
+		offset += ctx->hevc_nals[z].sizeBytes;
+	}
+
+	dispatch_payload(ctx, nalbuffer, nalbuffer_size, arrival_time);
+	free(nalbuffer);
+
+	/* Monitor bps for sanity... */
+	_monitor_bps(ctx, nalbuffer_size);
 }
 
 /* OBE will pass us a AVC struct initially. Pull out any important pieces
@@ -649,22 +695,52 @@ static void *x265_start_encoder( void *ptr )
 
 			if (rf) {
 				ctx->hevc_picture_in->pts = rf->avfm.audio_pts;
-				ret = x265_encoder_encode(ctx->hevc_encoder, &ctx->hevc_nals, &ctx->i_nal, ctx->hevc_picture_in, ctx->hevc_picture_out);
-			}
+				if (ctx->enc_params->avc_param.b_interlaced) {
 
-			if (g_sei_timestamping) {
-				/* Walk through each of the NALS and insert current time into any LTN sei timestamp frames we find. */
-				for (int m = 0; m < ctx->i_nal; m++) {
-					int offset = ltn_uuid_find(&ctx->hevc_nals[m].payload[0], ctx->hevc_nals[m].sizeBytes);
-					if (offset >= 0) {
+					/* Complete image copy of the original top/bottom frame. We'll submit this to the encoder as a bottom field
+					 * sans any structs we don't specifically want to copy.
+					 */
+					x265_picture *cpy = x265_picture_copy(ctx->hevc_picture_in);
+					cpy->userData = NULL;
+					cpy->rcData = NULL;
+					cpy->quantOffsets = NULL;
+					cpy->userSEI.numPayloads = 0;
+					cpy->userSEI.payloads = NULL;
 
-						struct timeval tv;
-						gettimeofday(&tv, NULL);
-
-						/* Add the time exit from compressor seconds/useconds. */
-						set_timestamp_field_set(&ctx->hevc_nals[m].payload[offset], 6, tv.tv_sec);
-						set_timestamp_field_set(&ctx->hevc_nals[m].payload[offset], 7, tv.tv_usec);
+					/* Tamper with plane offets to access the boottom field, adjust start of plane to reflect
+  					 * the second field then push this into the codec. */
+					uint8_t *origplanes[3] = { 0 };
+					for (int n = 0; n < 3; n++) {
+						origplanes[n] = cpy->planes[n];
+						if (n == 0)
+							cpy->planes[n] += (cpy->stride[n] * (ctx->enc_params->avc_param.i_height / 2));
+						else
+							cpy->planes[n] += (cpy->stride[n] * (ctx->enc_params->avc_param.i_height / 4));
 					}
+
+					ctx->i_nal = 0;
+					/* TFF or BFF? */
+					ret = x265_encoder_encode(ctx->hevc_encoder, &ctx->hevc_nals, &ctx->i_nal, ctx->hevc_picture_in, ctx->hevc_picture_out);
+					if (ret > 0) {
+						_process_nals(ctx, rf->arrival_time);
+						ret = 0;
+						ctx->i_nal = 0;
+					}
+
+					ctx->i_nal = 0;
+					ret = x265_encoder_encode(ctx->hevc_encoder, &ctx->hevc_nals, &ctx->i_nal, cpy, ctx->hevc_picture_out);
+					if (ret > 0) {
+						_process_nals(ctx, rf->arrival_time);
+						ret = 0;
+						ctx->i_nal = 0;
+					}
+
+					/* Restore the original copy plane offsets before we free the image. */
+					for (int n = 0; n < 3; n++)
+						cpy->planes[n] = origplanes[n];
+					x265_picture_free_all(cpy);
+				} else {
+					ret = x265_encoder_encode(ctx->hevc_encoder, &ctx->hevc_nals, &ctx->i_nal, ctx->hevc_picture_in, ctx->hevc_picture_out);
 				}
 			}
 
@@ -689,26 +765,7 @@ static void *x265_start_encoder( void *ptr )
 			}
 
 			if (ret > 0) {
-
-				/* Collapse N nals into a single allocation, so we can submit a single coded_frame, with a single clock. */
-				int nalbuffer_size = 0;
-				for (int z = 0; z < ctx->i_nal; z++) {
-					nalbuffer_size += ctx->hevc_nals[z].sizeBytes;
-				}
-
-				unsigned char *nalbuffer = malloc(((nalbuffer_size / getpagesize()) + 1) * getpagesize());
-				int offset = 0;
-				for (int z = 0; z < ctx->i_nal; z++) {
-					memcpy(nalbuffer + offset, ctx->hevc_nals[z].payload, ctx->hevc_nals[z].sizeBytes);
-					offset += ctx->hevc_nals[z].sizeBytes;
-				}
-
-				dispatch_payload(ctx, nalbuffer, nalbuffer_size, arrival_time);
-				free(nalbuffer);
-
-				/* Monitor bps for sanity... */
-				_monitor_bps(ctx, nalbuffer_size);
-
+				_process_nals(ctx, arrival_time);
 			} /* if nal_bytes > 0 */
 
 			leave = 1;
