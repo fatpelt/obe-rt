@@ -203,11 +203,22 @@ static int convert_interleaved_to_topbottom(struct context_s *ctx, obe_raw_frame
 plane0 num_interleaved 1 width 1920 height 1080
 plane1 num_interleaved 1 width 960 height 540
 plane2 num_interleaved 1 width 960 height 540
+
+plane0 num_interleaved 1 width 720 height 480
+plane1 num_interleaved 1 width 360 height 240
+plane2 num_interleaved 1 width 360 height 240
+printf("plane%d num_interleaved %d width %d height %d\n", i, num_interleaved, width, height);
 */
+/*
+ * in->stride[0] = 720  out->stride[0] = 720
+ * in->stride[1] = 368  out->stride[1] = 368
+ * in->stride[2] = 368  out->stride[2] = 368
+ * printf("in->stride[%d] = %d  out->stride[%d] = %d\n", i, img->stride[i], i, out->stride[i]);
+ */
 		/* Lets assume the first row belongs in the first field (TFF). */
 		uint8_t *src = img->plane[i];
 		uint8_t *dstTop = out->plane[i];
-		uint8_t *dstBottom = out->plane[i] + ((width * height) / 2);
+		uint8_t *dstBottom = out->plane[i] + ((out->stride[i] * height) / 2);
 
 		for (int j = 0; j < height / 2; j++) {
 
