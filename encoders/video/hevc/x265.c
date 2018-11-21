@@ -1,10 +1,10 @@
 /*****************************************************************************
- * x264.c : x264 encoding functions
+ * x265.c : x265 encoding functions
  *****************************************************************************
  * Copyright (C) 2018 LTN
  *
- * Authors: Kieran Kunhya <kieran@kunhya.com>
  * Authors: Steven Toth <stoth@ltnglobal.com>
+ * Using the x264 template developed by: Kieran Kunhya <kieran@kunhya.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
