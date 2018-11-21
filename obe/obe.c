@@ -1652,6 +1652,31 @@ int obe_image_compare(obe_image_t *a, obe_image_t *b)
 }
 #endif
 
+void obe_image_save(obe_image_t *src)
+{
+	static int g_image_save_idx = 0;
+
+	char fn[256];
+	sprintf(fn, "video-frame-%08d.yuv", g_image_save_idx++);
+	FILE *fh = fopen(fn, "wb");
+	if (!fh)
+		return;
+
+	uint32_t plane_len[4] = { 0 };
+	for (int i = src->planes - 1; i > 0; i--) {
+		plane_len[i - 1] = src->plane[i] - src->plane[i - 1];
+	}
+	if (src->planes == 3) {
+		plane_len[2] = plane_len[1];
+	}
+
+	for (int i = 0; i < src->planes; i++) {
+		fwrite(src->plane[i], 1, plane_len[i], fh);
+	}
+
+	fclose(fh);
+}
+
 void obe_image_copy(obe_image_t *dst, obe_image_t *src)
 {
 	memcpy(dst, src, sizeof(obe_image_t));
