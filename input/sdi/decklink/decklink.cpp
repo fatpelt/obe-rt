@@ -29,7 +29,6 @@
 #define __STDC_FORMAT_MACROS   1
 #define __STDC_CONSTANT_MACROS 1
 
-#define WRITE_OSD_VALUE 0
 #define READ_OSD_VALUE 0
 
 extern "C"
@@ -116,7 +115,6 @@ const static struct obe_to_decklink_video video_format_tab[] =
     { -1, 0, -1, -1 },
 };
 
-#if WRITE_OSD_VALUE || READ_OSD_VALUE
 #define  y_white 0x3ff
 #define  y_black 0x000
 #define cr_white 0x200
@@ -149,7 +147,7 @@ __inline__ void V210_draw_6_pixels(uint32_t *addr, uint32_t *coloring)
 	}
 }
 
-__inline__ void V210_draw_box(uint32_t *frame_addr, uint32_t stride, int color)
+__inline__ void V210_draw_box(uint32_t *frame_addr, uint32_t stride, int color, int interlaced)
 {
 	uint32_t *coloring;
 	if (color == 1)
@@ -157,24 +155,26 @@ __inline__ void V210_draw_box(uint32_t *frame_addr, uint32_t stride, int color)
 	else
 		coloring = black;
 
+	int interleaved = interlaced ? 2 : 1;
+	interleaved = 1;
 	for (uint32_t l = 0; l < 30; l++) {
-		uint32_t *addr = frame_addr + (l * (stride / 4));
+		uint32_t *addr = frame_addr + ((l * interleaved) * (stride / 4));
 		V210_draw_6_pixels(addr, coloring);
 	}
 }
 
-__inline__ void V210_draw_box_at(uint32_t *frame_addr, uint32_t stride, int color, int x, int y)
+__inline__ void V210_draw_box_at(uint32_t *frame_addr, uint32_t stride, int color, int x, int y, int interlaced)
 {
 	uint32_t *addr = frame_addr + (y * (stride / 4));
 	addr += ((x / 6) * 4);
-	V210_draw_box(addr, stride, color);
+	V210_draw_box(addr, stride, color, interlaced);
 }
 
-__inline__ void V210_write_32bit_value(void *frame_bytes, uint32_t stride, uint32_t value, uint32_t lineNr)
+__inline__ void V210_write_32bit_value(void *frame_bytes, uint32_t stride, uint32_t value, uint32_t lineNr, int interlaced)
 {
 	for (int p = 31, sh = 0; p >= 0; p--, sh++) {
 		V210_draw_box_at(((uint32_t *)frame_bytes), stride,
-			(value & (1 << sh)) == (uint32_t)(1 << sh), p * 30, lineNr);
+			(value & (1 << sh)) == (uint32_t)(1 << sh), p * 30, lineNr, interlaced);
 	}
 }
 
@@ -196,7 +196,6 @@ __inline__ uint32_t V210_read_32bit_value(void *frame_bytes, uint32_t stride, ui
 	}
 	return bits;
 }
-#endif
 
 class DeckLinkCaptureDelegate;
 
@@ -872,6 +871,9 @@ int           g_decklink_fake_lost_payload = 0;
 time_t        g_decklink_fake_lost_payload_time = 0;
 static int    g_decklink_fake_lost_payload_interval = 60;
 static int    g_decklink_fake_lost_payload_state = 0;
+int           g_decklink_burnwriter_enable = 0;
+uint32_t      g_decklink_burnwriter_count = 0;
+uint32_t      g_decklink_burnwriter_linenr = 0;
 
 int           g_decklink_monitor_hw_clocks = 0;
 
@@ -1271,10 +1273,10 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
         }
 #endif
 
-#if WRITE_OSD_VALUE
-	static uint32_t xxx = 0;
-	V210_write_32bit_value(frame_bytes, stride, xxx++, 100);
-#endif
+        if (g_decklink_burnwriter_enable) {
+            V210_write_32bit_value(frame_bytes, stride, g_decklink_burnwriter_count++, g_decklink_burnwriter_linenr, 1);
+        }
+
 #if READ_OSD_VALUE
 	{
 		static uint32_t xxx = 0;
