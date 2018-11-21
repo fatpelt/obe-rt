@@ -447,6 +447,19 @@ static void get_format_opts( decklink_opts_t *decklink_opts, IDeckLinkDisplayMod
             break;
     }
 
+    /* Tested with a MRD4400 upstread, adjusting signal formats:
+     * Resolution     Interlaced  TFF
+     * 720x480i                1    0
+     * 720x576i                1    1
+     * 1280x720p50             0    0
+     * 1280x720p59.94          0    0
+     * 1280x720p60             0    0
+     * 1920x1080i25            1    1
+     * 1920x1080i29.97         1    1
+     * 1920x1080i30            1    1
+     * 1920x1080p30            0    0
+     */
+
     decklink_opts->height = decklink_opts->coded_height;
     if( decklink_opts->coded_height == 486 )
         decklink_opts->height = 480;
