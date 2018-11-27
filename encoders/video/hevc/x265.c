@@ -33,6 +33,7 @@
 #define MESSAGE_PREFIX "[x265]:"
 
 int g_x265_monitor_bps = 0;
+static int64_t g_frame_duration = 0;
 
 #define SERIALIZE_CODED_FRAMES 0
 #if SERIALIZE_CODED_FRAMES
