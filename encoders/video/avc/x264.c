@@ -285,6 +285,17 @@ static void *x264_start_encoder( void *ptr )
         }
     } else
     if (h->obe_system == OBE_SYSTEM_TYPE_LOWEST_LATENCY || h->obe_system == OBE_SYSTEM_TYPE_LOW_LATENCY) {
+        if ((enc_params->avc_param.i_width == 1920) && (enc_params->avc_param.i_height == 1080)) {
+            /* For 1080p60 we can't sustain realtime. Adjust some params, but not as many as normal lat.. */
+            if ((enc_params->avc_param.i_fps_num > 30000) || ((enc_params->avc_param.i_fps_num < 1000) && (enc_params->avc_param.i_fps_num > 30))) {
+                /* For framerates above p30 assume worst case p60. */
+                if (enc_params->avc_param.i_threads < 8) {
+                    printf(MODULE "configuration threads defined as %d, need a minimum of 8. Adjusting to 8\n",
+                        enc_params->avc_param.i_threads);
+                    enc_params->avc_param.i_threads = 8;
+                }
+            }
+	}
     }
 
 #if 0
