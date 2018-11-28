@@ -347,31 +347,87 @@ static void encoder_wait( obe_t *h, int output_stream_id )
     pthread_mutex_unlock( &encoder->queue.mutex );
 }
 
-void mux_dump_queue(obe_t *h)
+struct queue_size_s {
+    int entries;
+    int totalSizeBytes;
+};
+__inline__ static void queue_size_init(struct queue_size_s *q)
 {
-    int count[3] = { 0 };
-    int size[3] = { 0 };
+    q->entries = 0;
+    q->totalSizeBytes = 0;
+}
 
-    pthread_mutex_lock(&h->mux_queue.mutex);
+/* Must be called with the mutex already held. */
+static void mux_get_queue_counts(obe_t *h,
+	struct queue_size_s *vq,
+	struct queue_size_s *aq,
+	struct queue_size_s *oq)
+{
+    queue_size_init(vq); /* Video q */
+    queue_size_init(aq); /* Audio q */
+    queue_size_init(oq); /* Other q */
+
     for (int i = 0; i < h->mux_queue.size; i++) {
         obe_coded_frame_t *cf = h->mux_queue.queue[i];
         if (cf->type == CF_VIDEO) {
-            count[0]++;
-            size[0] += cf->len;
+            vq->entries++;
+            vq->totalSizeBytes += cf->len;
         } else
         if (cf->type == CF_AUDIO) {
-            count[1]++;
-            size[1] += cf->len;
+            aq->entries++;
+            aq->totalSizeBytes += cf->len;
         } else {
-            count[2]++;
-            size[2] += cf->len;
+            oq->entries++;
+            oq->totalSizeBytes += cf->len;
         }
     }
+}
+
+#define MAX_QUEUED_AUDIO_WARNING 100
+void mux_dump_queue(obe_t *h)
+{
+    struct queue_size_s vq;
+    struct queue_size_s aq;
+    struct queue_size_s oq;
+
+    pthread_mutex_lock(&h->mux_queue.mutex);
+    mux_get_queue_counts(h, &vq, &aq, &oq);
     pthread_mutex_unlock(&h->mux_queue.mutex);
 
-    printf("\tmux.video frames = %d totalsize %d\n", count[0], size[0]);
-    printf("\tmux.audio frames = %d totalsize %d\n", count[1], size[1]);
-    printf("\tmux.other frames = %d totalsize %d\n", count[2], size[2]);
+    printf("\tmux.video frames = %d totalsize %d [%s]\n",
+        vq.entries, vq.totalSizeBytes,
+        vq.entries >= 60 ? "Too many frames - unusual" : "OK");
+
+    printf("\tmux.audio frames = %d totalsize %d [%s]\n",
+        aq.entries, aq.totalSizeBytes,
+        aq.entries >= MAX_QUEUED_AUDIO_WARNING ? "Too many frames - video compressor too slow" : "OK");
+
+    printf("\tmux.other frames = %d totalsize %d\n",
+        oq.entries, oq.totalSizeBytes);
+}
+
+/* Must be called with the queue already locked. */
+static void mux_monitor_queue(obe_t *h)
+{
+    struct queue_size_s vq;
+    struct queue_size_s aq;
+    struct queue_size_s oq;
+
+    mux_get_queue_counts(h, &vq, &aq, &oq);
+
+    if (aq.entries > MAX_QUEUED_AUDIO_WARNING) {
+        static time_t lastReport = 0;
+        time_t now;
+        time(&now);
+        /* Rate limit warning to every 15 seconds. */
+        if (now >= lastReport + 15) {
+            char msg[256];
+            sprintf(msg, "Warning: Encoder video codec is probably running less than realtime, usually bad.");
+            syslog(LOG_ERR, msg);
+            fprintf(stderr, "%s\n", msg);
+            lastReport = now;
+        }
+    }
 }
 
 int64_t initial_audio_latency = -1; /* ticks of 27MHz clock. Amount of audio (in time) we have buffered before the first video frame appeared. */
@@ -721,6 +777,8 @@ void *open_muxer( void *ptr )
             pthread_mutex_unlock( &h->mux_queue.mutex );
             goto end;
         }
+
+        mux_monitor_queue(h);
 
         /* We need to find the audio frame immediately prior to the first video frame,
          * if such a thing exists..... We'll use this in calculating how much queue audio
