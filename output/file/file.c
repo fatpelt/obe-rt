@@ -52,6 +52,7 @@ static void close_output(void *handle)
 		free(status->output->output_dest.target);
 
 	pthread_mutex_unlock(&status->output->queue.mutex);
+	free(status);
 }
 
 static void *file_ts_start(void *ptr)
@@ -62,21 +63,25 @@ static void *file_ts_start(void *ptr)
 
 	obe_output_t *output = ptr;
 	obe_output_dest_t *output_dest = &output->output_dest;
-	struct file_ts_status status;
-	memset(&status, 0, sizeof(status));
-
-	pthread_cleanup_push(close_output, (void*)&status);
+	struct file_ts_status *status = calloc(1, sizeof(*status));
+	if (!status) {
+		fprintf(stderr, PREFIX "Unable to malloc\n");
+		return NULL;
+	}
+	status->output = output;
 
 	if (output_dest->type != OUTPUT_FILE_TS) {
             fprintf(stderr, PREFIX "Output type is not file ts\n");
             return NULL;
 	}
 
-	status.fh = fopen(output_dest->target, "wb");
-	if (!status.fh) {
+	status->fh = fopen(output_dest->target, "wb");
+	if (!status->fh) {
             fprintf(stderr, PREFIX "Could not create file output [%s]\n", output_dest->target);
             return NULL;
 	}
+
+	pthread_cleanup_push(close_output, (void*)status);
 
 	while (1)
 	{
@@ -107,7 +112,7 @@ static void *file_ts_start(void *ptr)
 #endif
 		for (int i = 0; i < num_muxed_data; i++) {
 			int len = 188 * 7;
-			size_t wlen = fwrite(&muxed_data[i]->data[7 * sizeof(int64_t)], 1, len, status.fh);
+			size_t wlen = fwrite(&muxed_data[i]->data[7 * sizeof(int64_t)], 1, len, status->fh);
 			if (wlen <= 0) {
 				fprintf(stderr, PREFIX "Failed to write packet\n");
 				syslog(LOG_ERR, PREFIX "Failed to write packet\n");
