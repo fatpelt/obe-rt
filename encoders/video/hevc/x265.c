@@ -386,25 +386,36 @@ static int dispatch_payload(struct context_s *ctx, const unsigned char *buf, int
 		ctx->hevc_picture_out->poc, ctx->hevc_picture_out->sliceType);
 #endif
 
+	static int64_t last_hw_pts = 0;
 	struct userdata_s *out_ud = ctx->hevc_picture_out->userData; 
 	if (out_ud) {
 		/* Make sure we push the original hardware timing into the new frame. */
 		memcpy(&cf->avfm, &out_ud->avfm, sizeof(struct avfm_s));
 
 		cf->pts = out_ud->avfm.audio_pts;
+		last_hw_pts = out_ud->avfm.audio_pts;
 		userdata_free(out_ud);
 		out_ud = NULL;
 		ctx->hevc_picture_out->userData = 0;
 	} else {
 		//fprintf(stderr, MESSAGE_PREFIX " missing pic out userData\n");
+		cf->pts = last_hw_pts;
 	}
 
 	memcpy(cf->data, buf, lengthBytes);
 	cf->len                      = lengthBytes;
 	cf->type                     = CF_VIDEO;
+#if 0
+	/* Rely on the PTS time that comes from the s/w codec. */
 	cf->pts                      = ctx->hevc_picture_out->pts + 45000;
 	cf->real_pts                 = ctx->hevc_picture_out->pts + 45000;
 	cf->real_dts                 = ctx->hevc_picture_out->dts;
+#else
+	/* Recalculate a new real pts/dts based on the hardware time, not the codec time. */
+	cf->real_pts                 = cf->pts;
+	cf->real_dts                 = ctx->hevc_picture_out->dts;
+#endif
+
 	cf->cpb_initial_arrival_time = cf->real_pts;
 
 	double estimated_final = ((double)cf->len / 0.0810186) + (double)cf->cpb_initial_arrival_time;
@@ -413,6 +424,29 @@ static int dispatch_payload(struct context_s *ctx, const unsigned char *buf, int
 	cf->priority = IS_X265_TYPE_I(ctx->hevc_picture_out->sliceType);
 	cf->random_access = IS_X265_TYPE_I(ctx->hevc_picture_out->sliceType);
 
+	/* If interlaced is active, and the pts time has repeated, increment clocks
+	 * by the field rate (frame_duration / 2). Why do we increment clocks? We can either
+	 * take the PTS from the codec (which repeats) or derive the PTS from the actual
+	 * capture hardware. The codec PTS is guaranteed sequence, a problem during signal loss.
+	 * The hardware clock is non-sequential - a better clock to handle signal loss.
+	 */
+	static int64_t last_dispatch_pts = 0;
+	if (ctx->enc_params->avc_param.b_interlaced) {
+		if (cf->pts == last_dispatch_pts) {
+			cf->pts += (g_frame_duration / 2);
+			/* Recalculate a new real pts/dts based on the hardware time, not the codec time. */
+			cf->real_pts = cf->pts;
+			cf->real_dts = cf->pts;
+		}
+		last_dispatch_pts = cf->pts;
+	}
+
+#if NAL_DEBUG
+	printf(MESSAGE_PREFIX " --    output %7d nal bytes, pts = %12" PRIi64 " dts = %12" PRIi64 "\n",
+		lengthBytes,
+		cf->pts,
+		cf->real_dts);
+#endif
 	if (ctx->h->obe_system == OBE_SYSTEM_TYPE_LOWEST_LATENCY || ctx->h->obe_system == OBE_SYSTEM_TYPE_LOW_LATENCY) {
 		cf->arrival_time = arrival_time;
 #if SERIALIZE_CODED_FRAMES
