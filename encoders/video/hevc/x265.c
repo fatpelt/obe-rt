@@ -634,8 +634,8 @@ static void *x265_start_encoder( void *ptr )
 
 	ctx->encoder->is_ready = 1;
 
-	int64_t frame_duration = av_rescale_q( 1, (AVRational){ ctx->enc_params->avc_param.i_fps_den, ctx->enc_params->avc_param.i_fps_num}, (AVRational){ 1, OBE_CLOCK } );
-	printf("frame_duration = %" PRIi64 "\n", frame_duration);
+	g_frame_duration = av_rescale_q( 1, (AVRational){ ctx->enc_params->avc_param.i_fps_den, ctx->enc_params->avc_param.i_fps_num}, (AVRational){ 1, OBE_CLOCK } );
+	printf("frame_duration = %" PRIi64 "\n", g_frame_duration);
 	//buffer_duration = frame_duration * ctx->enc_params->avc_param.sc.i_buffer_size;
 
 	/* Wake up the muxer */
