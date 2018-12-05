@@ -515,6 +515,22 @@ public:
     {
         {
             BMDDisplayMode mode_id = p_display_mode->GetDisplayMode();
+
+            static BMDDisplayMode last_mode_id = 0xffffffff;
+            if (last_mode_id != 0xffffffff && last_mode_id != mode_id) {
+                /* Avoid a race condition where the probed resolution doesn't
+                 * match the SDI resolution when the encoder actually starts.
+                 * If you don't deal with that condition you end up feeding
+                 * 480i video into a 720p configured codec. Why? The probe condition
+                 * data is used to configured the codecs and downstream filters,
+                 * the startup resolution is completely ignored.
+                 * Cause the decklink module never to access a resolution during start
+                 * that didn't match what we found during probe. 
+                 */
+                decklink_opts_->decklink_ctx.last_frame_time = 0;
+            }
+            last_mode_id = mode_id;
+
             const struct obe_to_decklink_video *fmt = getVideoFormatByMode(mode_id);
             if (!fmt) {
                 syslog(LOG_WARNING, "(1)Unsupported video format %x", mode_id);
