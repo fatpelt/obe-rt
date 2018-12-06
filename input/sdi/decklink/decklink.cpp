@@ -476,6 +476,20 @@ static void get_format_opts( decklink_opts_t *decklink_opts, IDeckLinkDisplayMod
         decklink_opts->height = 480;
 }
 
+static const struct obe_to_decklink_video *getVideoFormatByOBEName(int obe_name)
+{
+    const struct obe_to_decklink_video *fmt;
+
+    for (int i = 0; video_format_tab[i].obe_name != -1; i++) {
+        fmt = &video_format_tab[i];
+        if (fmt->obe_name == obe_name) {
+            return fmt; 
+        }
+    }
+
+    return NULL;
+}
+
 static const struct obe_to_decklink_video *getVideoFormatByMode(BMDDisplayMode mode_id)
 {
     const struct obe_to_decklink_video *fmt;
