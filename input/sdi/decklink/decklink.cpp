@@ -115,6 +115,17 @@ const static struct obe_to_decklink_video video_format_tab[] =
     { -1, 0, -1, -1 },
 };
 
+static char g_modeName[5]; /* Racey */
+static const char *getModeName(BMDDisplayMode m)
+{
+	g_modeName[0] = m >> 24;
+	g_modeName[1] = m >> 16;
+	g_modeName[2] = m >>  8;
+	g_modeName[3] = m >>  0;
+	g_modeName[4] = 0;
+	return &g_modeName[0];
+}
+
 #define  y_white 0x3ff
 #define  y_black 0x000
 #define cr_white 0x200
