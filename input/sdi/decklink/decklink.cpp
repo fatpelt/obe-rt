@@ -620,6 +620,8 @@ public:
                 setup_pixel_funcs( decklink_opts_ );
 
                 decklink_ctx->p_input->PauseStreams();
+                printf("%s() calling enable video with mode %s\n",
+                    __func__, getModeName(p_display_mode->GetDisplayMode()));
                 decklink_ctx->p_input->EnableVideoInput( p_display_mode->GetDisplayMode(), bmdFormat10BitYUV, bmdVideoInputEnableFormatDetection );
                 decklink_ctx->enabled_mode_id = mode_id;
                 decklink_ctx->p_input->FlushStreams();
@@ -1930,6 +1932,7 @@ static int open_card( decklink_opts_t *decklink_opts )
     IDeckLinkDisplayModeIterator *p_display_iterator = NULL;
     IDeckLinkIterator *decklink_iterator = NULL;
     HRESULT result;
+    const struct obe_to_decklink_video *fmt = NULL;
 
     if (vanc_context_create(&decklink_ctx->vanchdl) < 0) {
         fprintf(stderr, "[decklink] Error initializing VANC library context\n");
@@ -2120,6 +2123,9 @@ static int open_card( decklink_opts_t *decklink_opts )
         goto finish;
     }
 
+    fmt = getVideoFormatByOBEName(decklink_opts->video_format);
+    printf("%s() decklink_opts->video_format = %d %s\n", __func__,
+        decklink_opts->video_format, getModeName(fmt->bmd_name));
     for( i = 0; video_format_tab[i].obe_name != -1; i++ )
     {
         if( video_format_tab[i].obe_name == decklink_opts->video_format )
@@ -2197,6 +2203,7 @@ static int open_card( decklink_opts_t *decklink_opts )
         goto finish;
     }
 
+    printf("%s() calling enable video with mode %s\n", __func__, getModeName(wanted_mode_id));
     result = decklink_ctx->p_input->EnableVideoInput( wanted_mode_id, bmdFormat10BitYUV, flags );
     if( result != S_OK )
     {
@@ -2291,6 +2298,7 @@ static void *probe_stream( void *ptr )
     int cur_stream = 0;
     obe_sdi_non_display_data_t *non_display_parser;
     decklink_ctx_t *decklink_ctx;
+    const struct obe_to_decklink_video *fmt = NULL;
 
     decklink_opts_t *decklink_opts = (decklink_opts_t*)calloc( 1, sizeof(*decklink_opts) );
     if( !decklink_opts )
@@ -2341,6 +2349,19 @@ static void *probe_stream( void *ptr )
         fprintf( stderr, "[decklink] No valid frames received - check connection and input format\n" );
         goto finish;
     }
+
+    /* Store the detected signal conditions in the user props, because OBE
+     * will use those then the stream starts. We then no longer have a race
+     * condition because the probe detected one format and the auto-mode
+     * during start would detect another. By telling OBE to startup in the mode
+     * we probed, if OBE dectects another format - the frames are discarded
+     * we no attempt is made to compress in the probe resolution with the startup
+     * resolution.
+     */
+    user_opts->video_format = decklink_opts->video_format;
+    fmt = getVideoFormatByOBEName(user_opts->video_format);
+    printf("%s() Detected signal: user_opts->video_format = %d %s\n", __func__, 
+        user_opts->video_format, getModeName(fmt->bmd_name));
 
 #define ALLOC_STREAM(nr) \
     streams[cur_stream] = (obe_int_input_stream_t*)calloc(1, sizeof(*streams[cur_stream])); \
