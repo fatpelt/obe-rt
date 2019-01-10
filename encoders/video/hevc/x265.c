@@ -30,6 +30,8 @@
 #define LOCAL_DEBUG 0
 #define NAL_DEBUG 0
 
+#define STILL_VIDEO_FIXES 1
+
 #define MESSAGE_PREFIX "[x265]:"
 
 int g_x265_monitor_bps = 0;
@@ -551,11 +553,30 @@ static void *x265_start_encoder( void *ptr )
 
 	x265_param_default(ctx->hevc_params);
 
+#if STILL_VIDEO_FIXES
+	int ret = x265_param_default_preset(ctx->hevc_params, "ultrafast", NULL);
+#else
 	int ret = x265_param_default_preset(ctx->hevc_params, "ultrafast", "zerolatency");
+#endif
 	if (ret < 0) {
 		fprintf(stderr, MESSAGE_PREFIX " failed to set default params\n");
 		goto out1;
 	}
+
+#if STILL_VIDEO_FIXES
+	printf(MESSAGE_PREFIX " still video fixes enabled.\n");
+	/* Animation settings - pulled from TIP */
+	/* Colorbar image tests improvements, where the CPU runs wild. */
+	ctx->hevc_params->bframes = (ctx->hevc_params->bframes + 2) >=
+		ctx->hevc_params->lookaheadDepth? ctx->hevc_params->bframes : ctx->hevc_params->bframes + 2;
+	ctx->hevc_params->psyRd = 0.4;
+	ctx->hevc_params->rc.aqStrength = 0.4;
+	ctx->hevc_params->deblockingFilterBetaOffset = 1;
+	ctx->hevc_params->deblockingFilterTCOffset = 1;
+	ctx->hevc_params->bframes = 0;
+	ctx->hevc_params->lookaheadDepth = 0;
+#endif
+
 
 //	ctx->hevc_params->fpsDenom = ctx->enc_params->avc_param.i_fps_den;
 //	ctx->hevc_params->fpsNum = ctx->enc_params->avc_param.i_fps_num;
@@ -634,6 +655,11 @@ static void *x265_start_encoder( void *ptr )
 //	x265_param_parse(ctx->hevc_params, "vbv-minrate", "6000");
 	sprintf(&val[0], "%d", ctx->enc_params->avc_param.rc.i_bitrate);
 	x265_param_parse(ctx->hevc_params, "bitrate", val);
+
+#if STILL_VIDEO_FIXES
+	ctx->hevc_params->maxNumReferences = 3;
+	ctx->hevc_params->rdLevel = 1;
+#endif
 
 	ctx->hevc_picture_in = x265_picture_alloc();
 	if (!ctx->hevc_picture_in) {
