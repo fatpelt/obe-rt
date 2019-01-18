@@ -30,6 +30,9 @@
 #define LOCAL_DEBUG 0
 #define NAL_DEBUG 0
 
+/* Debug feature, save each 1080i field picture as YUV to disk. */
+#define SAVE_FIELDS 0
+
 #define MESSAGE_PREFIX "[x265]:"
 
 int g_x265_monitor_bps = 0;
@@ -139,6 +142,38 @@ static void x265_picture_free_all(x265_picture *pic)
 #endif
 	x265_picture_free(pic);
 }
+
+#if SAVE_FIELDS
+static void x265_picture_save(x265_picture *pic)
+{
+	static int index = 0;
+
+	char fn[64];
+	sprintf(fn, "field%06d.yuv", index++);
+	FILE *fh = fopen(fn, "wb");
+
+	/* Copy all of the planes. */
+	uint32_t plane_len[4] = { 0 };
+	for (int i = 2; i > 0; i--) {
+		plane_len[i - 1] = pic->planes[i] - pic->planes[i - 1];
+	}
+	if (3) {
+		plane_len[2] = plane_len[1];
+	}
+	/* TODO: Highly specific to 1080i */
+	plane_len[0] = 1036800;
+	plane_len[1] = 259200;
+	plane_len[2] = 259200;
+
+	for (int i = 0; i < 3; i++) {
+		if (pic->planes[i]) {
+			fwrite(pic->planes[i], 1, plane_len[i], fh);
+		}
+	}
+
+	fclose(fh);
+}
+#endif
 
 /* Shallow copy the object. */
 static x265_picture *x265_picture_copy(x265_picture *pic)
@@ -773,6 +808,9 @@ static void *x265_start_encoder( void *ptr )
 
 					ctx->i_nal = 0;
 					/* TFF or BFF? */
+#if SAVE_FIELDS
+					x265_picture_save(ctx->hevc_picture_in);
+#endif
 					ret = x265_encoder_encode(ctx->hevc_encoder, &ctx->hevc_nals, &ctx->i_nal, ctx->hevc_picture_in, ctx->hevc_picture_out);
 					if (ret > 0) {
 						_process_nals(ctx, rf->arrival_time);
@@ -781,6 +819,9 @@ static void *x265_start_encoder( void *ptr )
 					}
 
 					ctx->i_nal = 0;
+#if SAVE_FIELDS
+					x265_picture_save(cpy);
+#endif
 					ret = x265_encoder_encode(ctx->hevc_encoder, &ctx->hevc_nals, &ctx->i_nal, cpy, ctx->hevc_picture_out);
 					if (ret > 0) {
 						_process_nals(ctx, rf->arrival_time);
