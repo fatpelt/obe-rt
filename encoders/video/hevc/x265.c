@@ -137,9 +137,7 @@ static void x265_picture_free_all(x265_picture *pic)
 	/* Originally I was copying the planes also. We
 	 * can probably refactor this function away.
 	 */
-#if 0
 	free(pic->planes[0]);
-#endif
 	x265_picture_free(pic);
 }
 
@@ -175,13 +173,12 @@ static void x265_picture_save(x265_picture *pic)
 }
 #endif
 
-/* Shallow copy the object. */
+/* Deep / full copy the object and associated pixel planes. */
 static x265_picture *x265_picture_copy(x265_picture *pic)
 {
 	x265_picture *p = malloc(sizeof(*p));
 	memcpy(p, pic, sizeof(*p));
 
-#if 0
 	/* Copy all of the planes. */
 	uint32_t plane_len[4] = { 0 };
 	for (int i = 2; i > 0; i--) {
@@ -206,7 +203,6 @@ static x265_picture *x265_picture_copy(x265_picture *pic)
                 }
 
         }
-#endif
 
 	return p;
 }
@@ -795,17 +791,6 @@ static void *x265_start_encoder( void *ptr )
 					cpy->userSEI.numPayloads = 0;
 					cpy->userSEI.payloads = NULL;
 
-					/* Tamper with plane offets to access the boottom field, adjust start of plane to reflect
-  					 * the second field then push this into the codec. */
-					uint8_t *origplanes[3] = { 0 };
-					for (int n = 0; n < 3; n++) {
-						origplanes[n] = cpy->planes[n];
-						if (n == 0)
-							cpy->planes[n] += (cpy->stride[n] * (ctx->enc_params->avc_param.i_height / 2));
-						else
-							cpy->planes[n] += (cpy->stride[n] * (ctx->enc_params->avc_param.i_height / 4));
-					}
-
 					ctx->i_nal = 0;
 					/* TFF or BFF? */
 #if SAVE_FIELDS
@@ -829,9 +814,6 @@ static void *x265_start_encoder( void *ptr )
 						ctx->i_nal = 0;
 					}
 
-					/* Restore the original copy plane offsets before we free the image. */
-					for (int n = 0; n < 3; n++)
-						cpy->planes[n] = origplanes[n];
 					x265_picture_free_all(cpy);
 				} else {
 					ret = x265_encoder_encode(ctx->hevc_encoder, &ctx->hevc_nals, &ctx->i_nal, ctx->hevc_picture_in, ctx->hevc_picture_out);
