@@ -795,8 +795,11 @@ static int set_stream( char *command, obecli_command_t *child )
                 }
 
                 avc_param->rc.i_vbv_max_bitrate = obe_otoi( vbv_maxrate, 0 );
+                FAIL_IF_ERROR(avc_param->rc.i_vbv_max_bitrate < 0, "Invalid vbv_maxrate.\n" );
                 avc_param->rc.i_vbv_buffer_size = obe_otoi( vbv_bufsize, 0 );
+                FAIL_IF_ERROR(avc_param->rc.i_vbv_buffer_size < 0, "Invalid vbv_buffer_size.\n" );
                 avc_param->rc.i_bitrate         = obe_otoi( bitrate, 0 );
+                FAIL_IF_ERROR(avc_param->rc.i_bitrate < 0, "Invalid bitrate.\n" );
                 avc_param->i_keyint_max        = obe_otoi( keyint, avc_param->i_keyint_max );
                 avc_param->rc.i_lookahead      = obe_otoi( lookahead, avc_param->rc.i_lookahead );
                 avc_param->i_threads           = obe_otoi( threads, avc_param->i_threads );
