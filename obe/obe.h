@@ -67,6 +67,8 @@ enum input_audio_connection_e
 enum input_video_format_e
 {
     /* SD */
+    INPUT_VIDEO_FORMAT_UNDEFINED,
+
     INPUT_VIDEO_FORMAT_PAL,
     INPUT_VIDEO_FORMAT_NTSC,
 

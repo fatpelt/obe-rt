@@ -72,6 +72,9 @@ struct obe_to_decklink_video
     int is_progressive;
     int visible_width;
     int visible_height;
+    int callback_width;     /* Width, height, stride provided during the frame callback. */
+    int callback_height;    /* Width, height, stride provided during the frame callback. */
+    int callback_stride;    /* Width, height, stride provided during the frame callback. */
     const char *ascii_name;
 };
 
@@ -96,22 +99,22 @@ const static struct obe_to_decklink audio_conn_tab[] =
 
 const static struct obe_to_decklink_video video_format_tab[] =
 {
-    { INPUT_VIDEO_FORMAT_PAL,             bmdModePAL,           1,    25,    0,  720,  288, "720x576i", },
-    { INPUT_VIDEO_FORMAT_NTSC,            bmdModeNTSC,          1001, 30000, 0,  720,  240, "720x480i",  },
-    { INPUT_VIDEO_FORMAT_720P_50,         bmdModeHD720p50,      1,    50,    1, 1280,  720, "1280x720p50", },
-    { INPUT_VIDEO_FORMAT_720P_5994,       bmdModeHD720p5994,    1001, 60000, 1, 1280,  720, "1280x720p59.94", },
-    { INPUT_VIDEO_FORMAT_720P_60,         bmdModeHD720p60,      1,    60,    1, 1280,  720, "1280x720p60", },
-    { INPUT_VIDEO_FORMAT_1080I_50,        bmdModeHD1080i50,     1,    25,    0, 1920,  540, "1920x1080i25", },
-    { INPUT_VIDEO_FORMAT_1080I_5994,      bmdModeHD1080i5994,   1001, 30000, 0, 1920,  540, "1920x1080i29.97", },
-    { INPUT_VIDEO_FORMAT_1080I_60,        bmdModeHD1080i6000,   1,    30,    0, 1920,  540, "1920x1080i30", },
-    { INPUT_VIDEO_FORMAT_1080P_2398,      bmdModeHD1080p2398,   1001, 24000, 1, 1920, 1080, "1920x1080p23.98", },
-    { INPUT_VIDEO_FORMAT_1080P_24,        bmdModeHD1080p24,     1,    24,    1, 1920, 1080, "1920x1080p24", },
-    { INPUT_VIDEO_FORMAT_1080P_25,        bmdModeHD1080p25,     1,    25,    1, 1920, 1080, "1920x1080p25", },
-    { INPUT_VIDEO_FORMAT_1080P_2997,      bmdModeHD1080p2997,   1001, 30000, 1, 1920, 1080, "1920x1080p29.97", },
-    { INPUT_VIDEO_FORMAT_1080P_30,        bmdModeHD1080p30,     1,    30,    1, 1920, 1080, "1920x1080p30", },
-    { INPUT_VIDEO_FORMAT_1080P_50,        bmdModeHD1080p50,     1,    50,    1, 1920, 1080, "1920x1080p50", },
-    { INPUT_VIDEO_FORMAT_1080P_5994,      bmdModeHD1080p5994,   1001, 60000, 1, 1920, 1080, "1920x1080p59.94", },
-    { INPUT_VIDEO_FORMAT_1080P_60,        bmdModeHD1080p6000,   1,    60,    1, 1920, 1080, "1920x1080p60", },
+    { INPUT_VIDEO_FORMAT_PAL,             bmdModePAL,           1,    25,    0,  720,  288,  720,  576, 1920, "720x576i", },
+    { INPUT_VIDEO_FORMAT_NTSC,            bmdModeNTSC,          1001, 30000, 0,  720,  240,  720,  486, 1920, "720x480i",  },
+    { INPUT_VIDEO_FORMAT_720P_50,         bmdModeHD720p50,      1,    50,    1, 1280,  720, 1280,  720, 3456, "1280x720p50", },
+    { INPUT_VIDEO_FORMAT_720P_5994,       bmdModeHD720p5994,    1001, 60000, 1, 1280,  720, 1280,  720, 3456, "1280x720p59.94", },
+    { INPUT_VIDEO_FORMAT_720P_60,         bmdModeHD720p60,      1,    60,    1, 1280,  720, 1280,  720, 3456, "1280x720p60", },
+    { INPUT_VIDEO_FORMAT_1080I_50,        bmdModeHD1080i50,     1,    25,    0, 1920,  540, 1920, 1080, 5120, "1920x1080i25", },
+    { INPUT_VIDEO_FORMAT_1080I_5994,      bmdModeHD1080i5994,   1001, 30000, 0, 1920,  540, 1920, 1080, 5120, "1920x1080i29.97", },
+    { INPUT_VIDEO_FORMAT_1080I_60,        bmdModeHD1080i6000,   1,    30,    0, 1920,  540, 1920, 1080, 5120, "1920x1080i30", },
+    { INPUT_VIDEO_FORMAT_1080P_2398,      bmdModeHD1080p2398,   1001, 24000, 1, 1920, 1080, 1920, 1080, 5120, "1920x1080p23.98", },
+    { INPUT_VIDEO_FORMAT_1080P_24,        bmdModeHD1080p24,     1,    24,    1, 1920, 1080, 1920, 1080, 5120, "1920x1080p24", },
+    { INPUT_VIDEO_FORMAT_1080P_25,        bmdModeHD1080p25,     1,    25,    1, 1920, 1080, 1920, 1080, 5120, "1920x1080p25", },
+    { INPUT_VIDEO_FORMAT_1080P_2997,      bmdModeHD1080p2997,   1001, 30000, 1, 1920, 1080, 1920, 1080, 5120, "1920x1080p29.97", },
+    { INPUT_VIDEO_FORMAT_1080P_30,        bmdModeHD1080p30,     1,    30,    1, 1920, 1080, 1920, 1080, 5120, "1920x1080p30", },
+    { INPUT_VIDEO_FORMAT_1080P_50,        bmdModeHD1080p50,     1,    50,    1, 1920, 1080, 1920, 1080, 5120, "1920x1080p50", },
+    { INPUT_VIDEO_FORMAT_1080P_5994,      bmdModeHD1080p5994,   1001, 60000, 1, 1920, 1080, 1920, 1080, 5120, "1920x1080p59.94", },
+    { INPUT_VIDEO_FORMAT_1080P_60,        bmdModeHD1080p6000,   1,    60,    1, 1920, 1080, 1920, 1080, 5120, "1920x1080p60", },
     { -1, 0, -1, -1 },
 };
 
@@ -250,6 +253,7 @@ typedef struct
     obe_device_t *device;
     obe_t *h;
     BMDDisplayMode enabled_mode_id;
+    const struct obe_to_decklink_video *enabled_mode_fmt;
 
     /* LIBKLVANC handle / context */
     struct vanc_context_s *vanchdl;
@@ -574,7 +578,13 @@ public:
                 }
             }
         }
+
         decklink_ctx_t *decklink_ctx = &decklink_opts_->decklink_ctx;
+        if (decklink_opts_->probe == 0) {
+            printf("%s() no format switching allowed outside of probe\n", __func__);
+            decklink_ctx->last_frame_time = 1;
+        }
+
         int i = 0;
         if( events & bmdVideoInputDisplayModeChanged )
         {
@@ -620,10 +630,15 @@ public:
                 setup_pixel_funcs( decklink_opts_ );
 
                 decklink_ctx->p_input->PauseStreams();
-                printf("%s() calling enable video with mode %s\n",
-                    __func__, getModeName(p_display_mode->GetDisplayMode()));
-                decklink_ctx->p_input->EnableVideoInput( p_display_mode->GetDisplayMode(), bmdFormat10BitYUV, bmdVideoInputEnableFormatDetection );
-                decklink_ctx->enabled_mode_id = mode_id;
+
+                /* We'll allow the input to be reconfigured, so that we can start to receive these
+                 * these newly sized frames. The Frame arrival callback will detect that these new
+                 * sizes don't match the older sizes and abort frame processing.
+                 * If we don't change the mode below, we end up still receiving older resolutions and
+                 * we're stuck in limbo, not knowing what to do during frame arrival.
+                 */
+                //printf("%s() calling enable video with mode %s\n", __func__, getModeName(mode_id));
+                decklink_ctx->p_input->EnableVideoInput(mode_id, bmdFormat10BitYUV, bmdVideoInputEnableFormatDetection);
                 decklink_ctx->p_input->FlushStreams();
                 decklink_ctx->p_input->StartStreams();
             } else {
@@ -1025,6 +1040,33 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
     IDeckLinkVideoFrameAncillary *ancillary;
     BMDTimeValue frame_duration;
     time_t now = time(0);
+    int width = 0;
+    int height = 0;
+    int stride = 0;
+
+    if (videoframe) {
+        width = videoframe->GetWidth();
+        height = videoframe->GetHeight();
+        stride = videoframe->GetRowBytes();
+    }
+
+    if (decklink_opts_->probe == 0 && decklink_ctx->enabled_mode_fmt) {
+        const struct obe_to_decklink_video *fmt = decklink_ctx->enabled_mode_fmt;
+
+        int abortframe = 0;
+        if (width != fmt->callback_width) {
+//            printf(" !width %d\n", width);
+            return S_OK;
+        }
+        if (height != fmt->callback_height) {
+//            printf(" !height %d\n", height);
+            return S_OK;
+        }
+        if (stride != fmt->callback_stride) {
+//            printf(" !stride %d\n", stride);
+            return S_OK;
+        }
+    }
 
     if (g_decklink_monitor_hw_clocks)
     {
@@ -1307,9 +1349,7 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
             decklink_ctx->last_frame_time = cur_frame_time;
         }
 
-        const int width = videoframe->GetWidth();
-        const int height = videoframe->GetHeight();
-        const int stride = videoframe->GetRowBytes();
+        //printf("video_format = %d, height = %d, width = %d, stride = %d\n", decklink_opts_->video_format, height, width, stride);
 
         videoframe->GetBytes( &frame_bytes );
 
@@ -2123,9 +2163,13 @@ static int open_card( decklink_opts_t *decklink_opts )
         goto finish;
     }
 
+    if (decklink_opts->video_format == INPUT_VIDEO_FORMAT_UNDEFINED && decklink_opts->probe) {
+        decklink_opts->video_format = INPUT_VIDEO_FORMAT_PAL;
+    }
     fmt = getVideoFormatByOBEName(decklink_opts->video_format);
-    printf("%s() decklink_opts->video_format = %d %s\n", __func__,
-        decklink_opts->video_format, getModeName(fmt->bmd_name));
+
+    //printf("%s() decklink_opts->video_format = %d %s\n", __func__,
+    //    decklink_opts->video_format, getModeName(fmt->bmd_name));
     for( i = 0; video_format_tab[i].obe_name != -1; i++ )
     {
         if( video_format_tab[i].obe_name == decklink_opts->video_format )
@@ -2204,14 +2248,15 @@ static int open_card( decklink_opts_t *decklink_opts )
     }
 
     printf("%s() calling enable video with mode %s\n", __func__, getModeName(wanted_mode_id));
-    result = decklink_ctx->p_input->EnableVideoInput( wanted_mode_id, bmdFormat10BitYUV, flags );
+    decklink_ctx->enabled_mode_id = wanted_mode_id;
+    decklink_ctx->enabled_mode_fmt = getVideoFormatByMode(decklink_ctx->enabled_mode_id);
+    result = decklink_ctx->p_input->EnableVideoInput(decklink_ctx->enabled_mode_id, bmdFormat10BitYUV, flags);
     if( result != S_OK )
     {
         fprintf( stderr, "[decklink] Failed to enable video input\n" );
         ret = -1;
         goto finish;
     }
-    decklink_ctx->enabled_mode_id = wanted_mode_id;
 
     /* Set up audio. */
     result = decklink_ctx->p_input->EnableAudioInput( sample_rate, bmdAudioSampleType32bitInteger, decklink_opts->num_channels );
