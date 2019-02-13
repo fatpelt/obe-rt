@@ -28,7 +28,7 @@
 #include <x265.h>
 
 #define LOCAL_DEBUG 0
-#define NAL_DEBUG 0
+#define NAL_DEBUG 1
 
 /* Debug feature, save each 1080i field picture as YUV to disk. */
 #define SAVE_FIELDS 0
@@ -400,6 +400,19 @@ static int convert_obe_to_x265_pic(struct context_s *ctx, x265_picture *p, struc
 	return 0;
 }
 
+static const char *sliceTypeDesc(int num)
+{
+	switch (num) {
+	case 0: return "AUTO";
+	case 1: return "IDR";
+	case 2: return "I";
+	case 3: return "P";
+	case 4: return "BREF";
+	case 5: return "B";
+	default: return "?";
+	}
+}
+
 static int dispatch_payload(struct context_s *ctx, const unsigned char *buf, int lengthBytes, int64_t arrival_time)
 {
 	obe_coded_frame_t *cf = new_coded_frame(ctx->encoder->output_stream_id, lengthBytes);
@@ -413,8 +426,9 @@ static int dispatch_payload(struct context_s *ctx, const unsigned char *buf, int
 		lengthBytes,
 		ctx->hevc_picture_out->pts,
 		ctx->hevc_picture_out->dts);
-	printf("poc %8d  sliceType %d\n",
-		ctx->hevc_picture_out->poc, ctx->hevc_picture_out->sliceType);
+	printf("poc %8d  sliceType %d [%s]\n",
+		ctx->hevc_picture_out->poc, ctx->hevc_picture_out->sliceType,
+		sliceTypeDesc(ctx->hevc_picture_out->sliceType));
 #endif
 
 	static int64_t last_hw_pts = 0;
@@ -473,10 +487,12 @@ static int dispatch_payload(struct context_s *ctx, const unsigned char *buf, int
 	}
 
 #if NAL_DEBUG
+#if 0
 	printf(MESSAGE_PREFIX " --    output %7d nal bytes, pts = %12" PRIi64 " dts = %12" PRIi64 "\n",
 		lengthBytes,
 		cf->pts,
 		cf->real_dts);
+#endif
 #endif
 	if (ctx->h->obe_system == OBE_SYSTEM_TYPE_LOWEST_LATENCY || ctx->h->obe_system == OBE_SYSTEM_TYPE_LOW_LATENCY) {
 		cf->arrival_time = arrival_time;
@@ -582,7 +598,7 @@ static void *x265_start_encoder( void *ptr )
 
 	x265_param_default(ctx->hevc_params);
 
-	int ret = x265_param_default_preset(ctx->hevc_params, "ultrafast", "zerolatency");
+	int ret = x265_param_default_preset(ctx->hevc_params, "faster", NULL);
 	if (ret < 0) {
 		fprintf(stderr, MESSAGE_PREFIX " failed to set default params\n");
 		goto out1;
@@ -663,6 +679,20 @@ static void *x265_start_encoder( void *ptr )
 
 //	x265_param_parse(ctx->hevc_params, "rc-lookahead", "4");
 //	x265_param_parse(ctx->hevc_params, "vbv-minrate", "6000");
+#if 1
+printf("Enabling strict cbr\n");
+	x265_param_parse(ctx->hevc_params, "strict-cbr", "1");
+#endif
+
+#if 0
+// customer
+	//x265_param_parse(ctx->hevc_params, "level-idc", "5.0");
+	//x265_param_parse(ctx->hevc_params, "keyframe-min", "30");
+	//x265_param_parse(ctx->hevc_params, "keyframe-max", "90");
+	x265_param_parse(ctx->hevc_params, "scenecut", "40");
+	x265_param_parse(ctx->hevc_params, "bframes", "2");
+	x265_param_parse(ctx->hevc_params, "rc-lookahead", "16");
+#endif
 	sprintf(&val[0], "%d", ctx->enc_params->avc_param.rc.i_bitrate);
 	x265_param_parse(ctx->hevc_params, "bitrate", val);
 
