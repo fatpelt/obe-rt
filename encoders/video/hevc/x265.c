@@ -207,6 +207,30 @@ static x265_picture *x265_picture_copy(x265_picture *pic)
 	return p;
 }
 
+static void x265_picture_copy_plane_ptrs(x265_picture *dst, x265_picture *src)
+{
+	for (int n = 0; n < 3; n++) {
+		dst->planes[n] = src->planes[n];
+	}
+}
+
+/* For a 420 interlaced image, 8 bit, adjust the planes that typically point to the
+ * top field, to point to the bottom field.
+ */
+static void x265_picture_interlaced__update_planes_bottom_field(struct context_s *ctx, x265_picture *pic)
+{
+	/* Tamper with plane offets to access the bottom field, adjust start of plane to reflect
+	 * the second field then push this into the codec.
+	 * This is a destructive process, the previous field ptrs are destroyed.
+	 */
+	for (int n = 0; n < 3; n++) {
+		if (n == 0)
+			pic->planes[n] += (pic->stride[n] * (ctx->enc_params->avc_param.i_height / 2));
+		else
+			pic->planes[n] += (pic->stride[n] * (ctx->enc_params->avc_param.i_height / 4));
+	}
+}
+
 /* Convert an 8bit interleaved pair of fields into TFF top/bottom image. */
 static int convert_interleaved_to_topbottom(struct context_s *ctx, obe_raw_frame_t *raw_frame)
 {
@@ -837,6 +861,15 @@ printf("Enabling strict cbr\n");
 #if SAVE_FIELDS
 					x265_picture_save(cpy);
 #endif
+					/* Backup the frame pointers, restore them later, so a free() doesn't complain that
+					 * we've adjusted the pointers.
+					 */
+					x265_picture cpy_ptrs;
+					x265_picture_copy_plane_ptrs(&cpy_ptrs, cpy);
+
+					/* Adjust the planes, point them to the bottom field. */
+					x265_picture_interlaced__update_planes_bottom_field(ctx, cpy);
+
 					ret = x265_encoder_encode(ctx->hevc_encoder, &ctx->hevc_nals, &ctx->i_nal, cpy, ctx->hevc_picture_out);
 					if (ret > 0) {
 						_process_nals(ctx, rf->arrival_time);
@@ -844,6 +877,8 @@ printf("Enabling strict cbr\n");
 						ctx->i_nal = 0;
 					}
 
+					/* Restore our original pointers and free the object. */
+					x265_picture_copy_plane_ptrs(cpy, &cpy_ptrs);
 					x265_picture_free_all(cpy);
 				} else {
 					ret = x265_encoder_encode(ctx->hevc_encoder, &ctx->hevc_nals, &ctx->i_nal, ctx->hevc_picture_in, ctx->hevc_picture_out);
