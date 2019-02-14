@@ -424,6 +424,7 @@ static int convert_obe_to_x265_pic(struct context_s *ctx, x265_picture *p, struc
 	return 0;
 }
 
+#if NAL_DEBUG
 static const char *sliceTypeDesc(int num)
 {
 	switch (num) {
@@ -436,6 +437,7 @@ static const char *sliceTypeDesc(int num)
 	default: return "?";
 	}
 }
+#endif
 
 static int dispatch_payload(struct context_s *ctx, const unsigned char *buf, int lengthBytes, int64_t arrival_time)
 {
