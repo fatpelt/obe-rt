@@ -28,7 +28,7 @@
 #include <x265.h>
 
 #define LOCAL_DEBUG 0
-#define NAL_DEBUG 1
+#define NAL_DEBUG 0
 
 /* Debug feature, save each 1080i field picture as YUV to disk. */
 #define SAVE_FIELDS 0
