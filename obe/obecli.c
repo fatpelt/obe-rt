@@ -1146,6 +1146,7 @@ extern int64_t initial_audio_latency;
 
 /* x265 */
 extern int g_x265_monitor_bps;
+extern int g_x265_nal_debug;
 
 /* SEI Timestamping. */
 extern int g_sei_timestamping;
@@ -1196,6 +1197,10 @@ void display_variables()
     printf("codec.x265.monitor_bps = %d [%s]\n",
         g_x265_monitor_bps,
         g_x265_monitor_bps == 0 ? "disabled" : "enabled");
+
+    printf("codec.x265.nal_debug = %d [%s]\n",
+        g_x265_nal_debug,
+        g_x265_nal_debug == 0 ? "disabled" : "enabled");
 
     printf("video_encoder.last_pts = %" PRIi64 "\n", cpb_removal_time);
     printf("v - a                  = %" PRIi64 "  %" PRIi64 "(ms)\n", cpb_removal_time - cur_pts,
@@ -1287,6 +1292,9 @@ static int set_variable(char *command, obecli_command_t *child)
     } else
     if (strcasecmp(var, "codec.x265.monitor_bps") == 0) {
         g_x265_monitor_bps = val;
+    } else
+    if (strcasecmp(var, "codec.x265.nal_debug") == 0) {
+        g_x265_nal_debug = val;
     } else
     if (strcasecmp(var, "video_encoder.sei_timestamping") == 0) {
         g_sei_timestamping = val;
