@@ -90,6 +90,7 @@ static const char * const mono_channels[]            = { "left", "right", 0 };
 static const char * const output_modules[]           = { "udp", "rtp", "linsys-asi", "filets", 0 };
 static const char * const addable_streams[]          = { "audio", "ttx" };
 static const char * const preset_names[]        = { "ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow", "placebo", NULL };
+static const char * const tuning_names[]        = { "animation", "zerolatency", "fastdecode", "grain", "ssim", "psnr", NULL };
 static const char * entropy_modes[] = { "cabac", "cavlc", NULL };
 
 static const char * system_opts[] = { "system-type", "max-probe-time", NULL };
@@ -123,6 +124,7 @@ static const char * stream_opts[] = { "action", "format",
                                       "entropy", /* 42 */
                                       "audio-offset", /* 43 */
                                       "video-codec", /* 44 */
+                                      "tuning-name", /* 45 */
                                       NULL };
 
 static const char * muxer_opts[]  = { "ts-type", "cbr", "ts-muxrate", "passthrough", "ts-id", "program-num", "pmt-pid", "pcr-pid",
@@ -690,6 +692,7 @@ static int set_stream( char *command, obecli_command_t *child )
             const char *entropy_mode = obe_get_option( stream_opts[42], opts );
             const char *audio_offset = obe_get_option( stream_opts[43], opts );
             const char *video_codec = obe_get_option( stream_opts[44], opts );
+            const char *tuning_name  = obe_get_option( stream_opts[45], opts );
 
             int video_codec_id = 0; /* AVC */
             if (video_codec) {
@@ -725,15 +728,28 @@ static int set_stream( char *command, obecli_command_t *child )
 
                 FAIL_IF_ERROR(preset_name && (check_enum_value( preset_name, preset_names) < 0),
                               "Invalid preset-name\n" );
+                FAIL_IF_ERROR(tuning_name && (check_enum_value( tuning_name, tuning_names) < 0),
+                              "Invalid tuning-name\n" );
                 FAIL_IF_ERROR(entropy_mode && (check_enum_value(entropy_mode, entropy_modes) < 0),
                               "Invalid entropy coding mode\n" );
 
+extern char g_video_encoder_preset_name[64];
+
                 if (preset_name) {
+                    strcpy(g_video_encoder_preset_name, preset_name);
                     obe_populate_avc_encoder_params(cli.h,  input_stream->input_stream_id
 			/* cli.program.streams[i].input_stream_id */, avc_param, preset_name);
                 } else {
+                    sprintf(g_video_encoder_preset_name, "very-fast");
                     obe_populate_avc_encoder_params(cli.h, input_stream->input_stream_id
 			/* cli.program.streams[i].input_stream_id */, avc_param, "veryfast");
+                }
+
+extern char g_video_encoder_tuning_name[64];
+                if (tuning_name) {
+                    strcpy(g_video_encoder_tuning_name, tuning_name);
+                } else {
+                    g_video_encoder_tuning_name[0] = 0;
                 }
 
                 /* We default to CABAC if the user has not specified an entropy mode. */

@@ -37,6 +37,8 @@
 
 int g_x265_monitor_bps = 0;
 static int64_t g_frame_duration = 0;
+char g_video_encoder_preset_name[64] = { 0 };
+char g_video_encoder_tuning_name[64] = { 0 };
 
 #define SERIALIZE_CODED_FRAMES 0
 #if SERIALIZE_CODED_FRAMES
@@ -609,6 +611,9 @@ static void _process_nals(struct context_s *ctx, int64_t arrival_time)
  */
 static void *x265_start_encoder( void *ptr )
 {
+	printf(MESSAGE_PREFIX "%s() preset_name = %s\n", __func__, g_video_encoder_preset_name);
+	printf(MESSAGE_PREFIX "%s() tuning_name = %s\n", __func__, g_video_encoder_tuning_name);
+
 	struct context_s ectx, *ctx = &ectx;
 	memset(ctx, 0, sizeof(*ctx));
 
@@ -624,7 +629,27 @@ static void *x265_start_encoder( void *ptr )
 
 	x265_param_default(ctx->hevc_params);
 
-	int ret = x265_param_default_preset(ctx->hevc_params, "faster", NULL);
+	char preset_name[64];
+	if (strlen(g_video_encoder_preset_name) > 0) {
+		strcpy(preset_name, g_video_encoder_preset_name);
+	} else {
+		strcpy(preset_name, "faster");
+	}
+
+	char tuning_name[64];
+	if (strlen(g_video_encoder_tuning_name) > 0) {
+		strcpy(tuning_name, g_video_encoder_tuning_name);
+	} else {
+		strcpy(tuning_name, "");
+	}
+
+	int ret;
+	if (strlen(tuning_name) == 0) {
+		ret = x265_param_default_preset(ctx->hevc_params, g_video_encoder_preset_name, NULL);
+	} else {
+		ret = x265_param_default_preset(ctx->hevc_params, g_video_encoder_preset_name, g_video_encoder_tuning_name);
+	}
+
 	if (ret < 0) {
 		fprintf(stderr, MESSAGE_PREFIX " failed to set default params\n");
 		goto out1;
@@ -711,7 +736,7 @@ printf("Enabling strict cbr\n");
 #endif
 
 #if 0
-// customer
+// Customer
 	//x265_param_parse(ctx->hevc_params, "level-idc", "5.0");
 	//x265_param_parse(ctx->hevc_params, "keyframe-min", "30");
 	//x265_param_parse(ctx->hevc_params, "keyframe-max", "90");
@@ -719,6 +744,12 @@ printf("Enabling strict cbr\n");
 	x265_param_parse(ctx->hevc_params, "bframes", "2");
 	x265_param_parse(ctx->hevc_params, "rc-lookahead", "16");
 #endif
+
+#if 1
+// Customer2
+	x265_param_parse(ctx->hevc_params, "bframes", "2");
+#endif
+
 	sprintf(&val[0], "%d", ctx->enc_params->avc_param.rc.i_bitrate);
 	x265_param_parse(ctx->hevc_params, "bitrate", val);
 
