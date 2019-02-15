@@ -28,13 +28,13 @@
 #include <x265.h>
 
 #define LOCAL_DEBUG 0
-#define NAL_DEBUG 0
 
 /* Debug feature, save each 1080i field picture as YUV to disk. */
 #define SAVE_FIELDS 0
 
 #define MESSAGE_PREFIX "[x265]:"
 
+int g_x265_nal_debug = 0;
 int g_x265_monitor_bps = 0;
 static int64_t g_frame_duration = 0;
 char g_video_encoder_preset_name[64] = { 0 };
@@ -426,7 +426,6 @@ static int convert_obe_to_x265_pic(struct context_s *ctx, x265_picture *p, struc
 	return 0;
 }
 
-#if NAL_DEBUG
 static const char *sliceTypeDesc(int num)
 {
 	switch (num) {
@@ -439,7 +438,6 @@ static const char *sliceTypeDesc(int num)
 	default: return "?";
 	}
 }
-#endif
 
 static int dispatch_payload(struct context_s *ctx, const unsigned char *buf, int lengthBytes, int64_t arrival_time)
 {
@@ -449,15 +447,15 @@ static int dispatch_payload(struct context_s *ctx, const unsigned char *buf, int
 		return -1;
 	}
 
-#if NAL_DEBUG
-	printf(MESSAGE_PREFIX " --  acquired %7d nal bytes, pts = %12" PRIi64 " dts = %12" PRIi64 ", ",
-		lengthBytes,
-		ctx->hevc_picture_out->pts,
-		ctx->hevc_picture_out->dts);
-	printf("poc %8d  sliceType %d [%s]\n",
-		ctx->hevc_picture_out->poc, ctx->hevc_picture_out->sliceType,
-		sliceTypeDesc(ctx->hevc_picture_out->sliceType));
-#endif
+	if (g_x265_nal_debug) {
+		printf(MESSAGE_PREFIX " --  acquired %7d nal bytes, pts = %12" PRIi64 " dts = %12" PRIi64 ", ",
+			lengthBytes,
+			ctx->hevc_picture_out->pts,
+			ctx->hevc_picture_out->dts);
+		printf("poc %8d  sliceType %d [%s]\n",
+			ctx->hevc_picture_out->poc, ctx->hevc_picture_out->sliceType,
+			sliceTypeDesc(ctx->hevc_picture_out->sliceType));
+	}
 
 	static int64_t last_hw_pts = 0;
 	struct userdata_s *out_ud = ctx->hevc_picture_out->userData; 
@@ -514,14 +512,13 @@ static int dispatch_payload(struct context_s *ctx, const unsigned char *buf, int
 		last_dispatch_pts = cf->pts;
 	}
 
-#if NAL_DEBUG
-#if 0
-	printf(MESSAGE_PREFIX " --    output %7d nal bytes, pts = %12" PRIi64 " dts = %12" PRIi64 "\n",
-		lengthBytes,
-		cf->pts,
-		cf->real_dts);
-#endif
-#endif
+	if (g_x265_nal_debug) {
+		printf(MESSAGE_PREFIX " --    output %7d nal bytes, pts = %12" PRIi64 " dts = %12" PRIi64 "\n",
+			lengthBytes,
+			cf->pts,
+			cf->real_dts);
+	}
+
 	if (ctx->h->obe_system == OBE_SYSTEM_TYPE_LOWEST_LATENCY || ctx->h->obe_system == OBE_SYSTEM_TYPE_LOW_LATENCY) {
 		cf->arrival_time = arrival_time;
 #if SERIALIZE_CODED_FRAMES
