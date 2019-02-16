@@ -253,6 +253,7 @@ static void *start_encoder( void *ptr )
                 av_fifo_generic_read( out_fifo, coded_frame->data, total_size, NULL );
 
                 coded_frame->pts = cur_pts;
+                coded_frame->pts += ((int64_t)stream->audio_offset_ms * 27000);
                 coded_frame->random_access = 1; /* Every frame output is a random access point */
                 coded_frame->type = CF_AUDIO;
                 add_to_queue( &h->mux_queue, coded_frame );
