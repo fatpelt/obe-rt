@@ -102,6 +102,7 @@ static void *start_encoder_mp2( void *ptr )
     int64_t lastCodedFramePTS = 0; /* The codec is burst. We have to keep tabs on the audio pts and adjust to avoid dup pts. */
     int64_t lastOutputFramePTS = 0; /* Last pts we output, we'll comare against future version to warn for discontinuities. */
 
+int64_t headset_bias = 0;
     /* Lock the mutex until we verify parameters */
     pthread_mutex_lock( &encoder->queue.mutex );
 
@@ -249,10 +250,25 @@ static void *start_encoder_mp2( void *ptr )
         av_fifo_generic_write( fifo, output_buf, output_size, NULL );
 
         /* If the fifo is empty, and the compressor created some payload,
-         * reset the audio timebase to batch the current latest audioframe.
+         * reset the audio timebase to match the current latest audioframe.
          */
         if (output_size > 0 && av_fifo_size(fifo) >= output_size) {
             fifoHeadPTS = avfm.audio_pts;
+
+/* TODO: Cleanup.
+ * The audio hardware clock, on startup with 1080i59.95 video, has one of two values with 10.11.4 firmware.
+ * Either the audio clocks is the value zero, or its 1801xxx. Reason unknown.
+ * For the time being, fudge a bias into the PTS calculations so the output PTS is ALWAYS
+ * in the right place - atleast for this specific standard.
+ * Its unclean, we need to understand why the audio clock varies and create a reliable fix.
+ */
+static int headsets = 0;
+if (headsets++ == 0 && fifoHeadPTS > 0) {
+    headset_bias  = 27000 * 18; /* Add 18ms */
+    headset_bias += (27000 / 2); /* Add .5ms */
+    headset_bias += (27000 / 4); /* Add .25ms */
+    printf("headset bias = %" PRIi64 ", head %" PRIi64 "\n", headset_bias, fifoHeadPTS);
+}
         }
 
         int framesProcessed = 0;
@@ -321,9 +337,10 @@ static void *start_encoder_mp2( void *ptr )
 
             rounded_pts /= OBE_CLOCK;
             rounded_pts *= (648000 * enc_params->frames_per_pes);
+rounded_pts += headset_bias;
             coded_frame->pts = rounded_pts;
-            coded_frame->pts += ((int64_t)stream->audio_offset_ms * 27000);
 
+            coded_frame->pts +=  ((int64_t)stream->audio_offset_ms * 27000LL);
             coded_frame->random_access = 1; /* Every frame output is a random access point */
             coded_frame->type = CF_AUDIO;
 
@@ -345,6 +362,8 @@ static void *start_encoder_mp2( void *ptr )
                 }
                 lastOutputFramePTS = coded_frame->pts;
             }
+if (coded_frame->pts < 0)
+  coded_frame->pts = 0;
             add_to_queue( &h->mux_queue, coded_frame );
         }
     }
