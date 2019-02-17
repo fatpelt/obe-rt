@@ -36,6 +36,8 @@
 
 int g_x265_nal_debug = 0;
 int g_x265_monitor_bps = 0;
+int g_x265_min_qp = 15; /* TODO: Potential quality limiter at high bitrates? */
+int g_x265_min_qp_new = 0;
 static int64_t g_frame_duration = 0;
 char g_video_encoder_preset_name[64] = { 0 };
 char g_video_encoder_tuning_name[64] = { 0 };
@@ -52,6 +54,56 @@ static void serialize_coded_frame(obe_coded_frame_t *cf)
 }
 #endif
 
+/* 64 doubles, an array ordered oldeest to newest.
+ * We'll use these to track QP over the last 64 frames.
+ */
+
+static int qp_measures_index = 0;
+static struct qp_measurements_s
+{
+	double qp;
+	int frameLatency;
+} qp_measures[64];
+
+static void qp_measure_init(struct qp_measurements_s *array)
+{
+	memset(array, 0, sizeof(*array) * 32);
+};
+
+/* Not thread safe, add only from a single thread. */
+static void qp_measures_add(struct qp_measurements_s *array, double qp, int frameLatency)
+{
+	(array + (qp_measures_index   & 0x1f))->qp = qp;
+	(array + (qp_measures_index++ & 0x1f))->frameLatency = frameLatency;
+};
+
+double qp_measures_get_average_qp(struct qp_measurements_s *array)
+{
+	double n = 0;
+	for (int i = 0; i < 32; i++)
+		n += (array + i)->qp;
+
+	return n / 32;
+};
+
+double qp_measures_get_average_frame_latency(struct qp_measurements_s *array)
+{
+	double n = 0;
+	for (int i = 0; i < 32; i++)
+		n += (array + i)->frameLatency;
+
+	return n / 32;
+};
+
+void hevc_show_stats()
+{
+	printf(MESSAGE_PREFIX "qp average over last 64 frames %4.2f\n",
+		qp_measures_get_average_qp(&qp_measures[0]));
+	printf(MESSAGE_PREFIX "latency average over last 64 frames %4.2f\n",
+		qp_measures_get_average_frame_latency(&qp_measures[0]));
+}
+
+/* end - 64 doubles */
 struct context_s
 {
 	obe_vid_enc_params_t *enc_params;
@@ -141,6 +193,30 @@ static void x265_picture_free_all(x265_picture *pic)
 	 */
 	free(pic->planes[0]);
 	x265_picture_free(pic);
+}
+
+static void x265_picture_analyze_stats(struct context_s *ctx, x265_picture *pic)
+{
+	x265_frame_stats *s = &pic->frameData;
+
+	qp_measures_add(&qp_measures[0], s->qp, s->frameLatency);
+
+	if (g_x265_nal_debug & 0x01) {
+		printf(MESSAGE_PREFIX
+			"poc %8d type %c bits %9" PRIu64 " latency %d encoderOrder %8d sceneCut:%d qp %6.2f pts %13" PRIi64 " dts %13" PRIi64 "\n",
+			s->poc,
+			s->sliceType,
+			s->bits,
+			s->frameLatency,	/* Latency in terms of number of frames between when the frame was given in and when the frame is given out. */
+			s->encoderOrder,
+			s->bScenecut,
+			s->qp,
+			pic->pts,
+			pic->dts);
+
+		if (s->bScenecut)
+			printf("\n");
+	}
 }
 
 #if SAVE_FIELDS
@@ -447,7 +523,7 @@ static int dispatch_payload(struct context_s *ctx, const unsigned char *buf, int
 		return -1;
 	}
 
-	if (g_x265_nal_debug) {
+	if (g_x265_nal_debug & 0x02) {
 		printf(MESSAGE_PREFIX " --  acquired %7d nal bytes, pts = %12" PRIi64 " dts = %12" PRIi64 ", ",
 			lengthBytes,
 			ctx->hevc_picture_out->pts,
@@ -512,7 +588,7 @@ static int dispatch_payload(struct context_s *ctx, const unsigned char *buf, int
 		last_dispatch_pts = cf->pts;
 	}
 
-	if (g_x265_nal_debug) {
+	if (g_x265_nal_debug & 0x02) {
 		printf(MESSAGE_PREFIX " --    output %7d nal bytes, pts = %12" PRIi64 " dts = %12" PRIi64 "\n",
 			lengthBytes,
 			cf->pts,
@@ -603,25 +679,14 @@ static void _process_nals(struct context_s *ctx, int64_t arrival_time)
 	_monitor_bps(ctx, nalbuffer_size);
 }
 
-/* OBE will pass us a AVC struct initially. Pull out any important pieces
- * and pass those to x265.
- */
-static void *x265_start_encoder( void *ptr )
+static int reconfigure_encoder(struct context_s *ctx)
 {
-	printf(MESSAGE_PREFIX "%s() preset_name = %s\n", __func__, g_video_encoder_preset_name);
-	printf(MESSAGE_PREFIX "%s() tuning_name = %s\n", __func__, g_video_encoder_tuning_name);
-
-	struct context_s ectx, *ctx = &ectx;
-	memset(ctx, 0, sizeof(*ctx));
-
-	ctx->enc_params = ptr;
-	ctx->h = ctx->enc_params->h;
-	ctx->encoder = ctx->enc_params->encoder;
+	x265_param_free(ctx->hevc_params);
 
 	ctx->hevc_params = x265_param_alloc();
 	if (!ctx->hevc_params) {
 		fprintf(stderr, MESSAGE_PREFIX " failed to allocate params\n");
-		goto out1;
+		return -1;
 	}
 
 	x265_param_default(ctx->hevc_params);
@@ -649,7 +714,7 @@ static void *x265_start_encoder( void *ptr )
 
 	if (ret < 0) {
 		fprintf(stderr, MESSAGE_PREFIX " failed to set default params\n");
-		goto out1;
+		return -1;
 	}
 
 //	ctx->hevc_params->fpsDenom = ctx->enc_params->avc_param.i_fps_den;
@@ -707,13 +772,18 @@ static void *x265_start_encoder( void *ptr )
 
 	if (ctx->h->obe_system == OBE_SYSTEM_TYPE_LOWEST_LATENCY) {
 		/* Found that in lowest mode, obe doesn't accept the param, but the codec reports underruns. */
-		ctx->enc_params->avc_param.rc.i_vbv_buffer_size = ctx->enc_params->avc_param.rc.i_vbv_max_bitrate;
+		ctx->enc_params->avc_param.rc.i_vbv_buffer_size = ctx->enc_params->avc_param.rc.i_vbv_max_bitrate * 2;
 	}
 	sprintf(&val[0], "%d", ctx->enc_params->avc_param.rc.i_vbv_buffer_size);
 	x265_param_parse(ctx->hevc_params, "vbv-bufsize", val);
 
 	sprintf(&val[0], "%d", ctx->enc_params->avc_param.rc.i_vbv_max_bitrate);
 	x265_param_parse(ctx->hevc_params, "vbv-maxrate", val);
+	x265_param_parse(ctx->hevc_params, "vbv-init", "0.5");
+
+	sprintf(&val[0], "%d", g_x265_min_qp);
+printf("Setting QPmin to %s\n", val);
+	x265_param_parse(ctx->hevc_params, "qpmin", val);
 
 	if (ctx->enc_params->avc_param.i_threads < 8) {
 		printf(MESSAGE_PREFIX "configuration threads defined as %d, need a minimum of 8. Adjusting to 8\n",
@@ -724,31 +794,33 @@ static void *x265_start_encoder( void *ptr )
 	/* 0 Is preferred, which is 'autodetect' */
 	sprintf(&val[0], "%d", ctx->enc_params->avc_param.i_threads);
 	x265_param_parse(ctx->hevc_params, "frame-threads", val);
-
-//	x265_param_parse(ctx->hevc_params, "rc-lookahead", "4");
-//	x265_param_parse(ctx->hevc_params, "vbv-minrate", "6000");
-#if 1
-printf("Enabling strict cbr\n");
 	x265_param_parse(ctx->hevc_params, "strict-cbr", "1");
-#endif
-
-#if 0
-// Customer
-	//x265_param_parse(ctx->hevc_params, "level-idc", "5.0");
-	//x265_param_parse(ctx->hevc_params, "keyframe-min", "30");
-	//x265_param_parse(ctx->hevc_params, "keyframe-max", "90");
-	x265_param_parse(ctx->hevc_params, "scenecut", "40");
-	x265_param_parse(ctx->hevc_params, "bframes", "2");
-	x265_param_parse(ctx->hevc_params, "rc-lookahead", "16");
-#endif
-
-#if 1
-// Customer2
-	x265_param_parse(ctx->hevc_params, "bframes", "2");
-#endif
 
 	sprintf(&val[0], "%d", ctx->enc_params->avc_param.rc.i_bitrate);
 	x265_param_parse(ctx->hevc_params, "bitrate", val);
+
+	return 0;
+}
+
+/* OBE will pass us a AVC struct initially. Pull out any important pieces
+ * and pass those to x265.
+ */
+static void *x265_start_encoder( void *ptr )
+{
+	printf(MESSAGE_PREFIX "%s() preset_name = %s\n", __func__, g_video_encoder_preset_name);
+	printf(MESSAGE_PREFIX "%s() tuning_name = %s\n", __func__, g_video_encoder_tuning_name);
+
+	struct context_s ectx, *ctx = &ectx;
+	memset(ctx, 0, sizeof(*ctx));
+
+	qp_measure_init(&qp_measures[0]);
+
+	ctx->enc_params = ptr;
+	ctx->h = ctx->enc_params->h;
+	ctx->encoder = ctx->enc_params->encoder;
+	int ret;
+
+	reconfigure_encoder(ctx);
 
 	ctx->hevc_picture_in = x265_picture_alloc();
 	if (!ctx->hevc_picture_in) {
@@ -863,6 +935,26 @@ printf("Enabling strict cbr\n");
 
 			if (rf) {
 				ctx->hevc_picture_in->pts = rf->avfm.audio_pts;
+
+				if (g_x265_min_qp_new) {
+					g_x265_min_qp_new = 0;
+					x265_encoder_close(ctx->hevc_encoder);
+
+printf("Restarting codec with new params\n");
+					ret = reconfigure_encoder(ctx);
+					if (ret < 0) {
+						fprintf(stderr, MESSAGE_PREFIX " failed to reconfigre encoder.\n");
+						exit(1);
+					}
+
+					ctx->hevc_encoder = x265_encoder_open(ctx->hevc_params);
+					if (!ctx->hevc_encoder) {
+						fprintf(stderr, MESSAGE_PREFIX " failed to open encoder, again.\n");
+						exit(1);
+					}
+printf("Restarting codec with new params ... done\n");
+
+				}
 				if (ctx->enc_params->avc_param.b_interlaced) {
 
 					/* Complete image copy of the original top/bottom frame. We'll submit this to the encoder as a bottom field
@@ -882,6 +974,7 @@ printf("Enabling strict cbr\n");
 #endif
 					ret = x265_encoder_encode(ctx->hevc_encoder, &ctx->hevc_nals, &ctx->i_nal, ctx->hevc_picture_in, ctx->hevc_picture_out);
 					if (ret > 0) {
+						x265_picture_analyze_stats(ctx, ctx->hevc_picture_out);
 						_process_nals(ctx, rf->arrival_time);
 						ret = 0;
 						ctx->i_nal = 0;
@@ -902,6 +995,7 @@ printf("Enabling strict cbr\n");
 
 					ret = x265_encoder_encode(ctx->hevc_encoder, &ctx->hevc_nals, &ctx->i_nal, cpy, ctx->hevc_picture_out);
 					if (ret > 0) {
+						x265_picture_analyze_stats(ctx, ctx->hevc_picture_out);
 						_process_nals(ctx, rf->arrival_time);
 						ret = 0;
 						ctx->i_nal = 0;
@@ -912,6 +1006,9 @@ printf("Enabling strict cbr\n");
 					x265_picture_free_all(cpy);
 				} else {
 					ret = x265_encoder_encode(ctx->hevc_encoder, &ctx->hevc_nals, &ctx->i_nal, ctx->hevc_picture_in, ctx->hevc_picture_out);
+					if (ret > 0) {
+						x265_picture_analyze_stats(ctx, ctx->hevc_picture_out);
+					}
 				}
 			}
 
@@ -959,7 +1056,7 @@ out3:
 out2:
 	if (ctx->hevc_params)
 		x265_param_free(ctx->hevc_params);
-out1:
+
 	x265_cleanup();
 
 	return NULL;
