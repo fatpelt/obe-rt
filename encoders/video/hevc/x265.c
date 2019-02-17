@@ -773,14 +773,28 @@ static int reconfigure_encoder(struct context_s *ctx)
 
 	if (ctx->h->obe_system == OBE_SYSTEM_TYPE_LOWEST_LATENCY) {
 		/* Found that in lowest mode, obe doesn't accept the param, but the codec reports underruns. */
-		ctx->enc_params->avc_param.rc.i_vbv_buffer_size = ctx->enc_params->avc_param.rc.i_vbv_max_bitrate * 2;
+		ctx->enc_params->avc_param.rc.i_vbv_buffer_size = ctx->enc_params->avc_param.rc.i_vbv_max_bitrate;
 	}
 	sprintf(&val[0], "%d", ctx->enc_params->avc_param.rc.i_vbv_buffer_size);
 	x265_param_parse(ctx->hevc_params, "vbv-bufsize", val);
 
 	sprintf(&val[0], "%d", ctx->enc_params->avc_param.rc.i_vbv_max_bitrate);
 	x265_param_parse(ctx->hevc_params, "vbv-maxrate", val);
-	x265_param_parse(ctx->hevc_params, "vbv-init", "0.5");
+	x265_param_parse(ctx->hevc_params, "vbv-init", "0.9");
+
+	if (ctx->enc_params->avc_param.rc.i_lookahead > 0) {
+		sprintf(&val[0], "%d", ctx->enc_params->avc_param.rc.i_lookahead);
+		printf(MESSAGE_PREFIX "lookahead = %s\n", val); 
+		x265_param_parse(ctx->hevc_params, "rc-lookahead", val);
+	}
+	//x265_param_parse(ctx->hevc_params, "pmode", "1");
+	//x265_param_parse(ctx->hevc_params, "pme", "1");
+	//x265_param_parse(ctx->hevc_params, "slices", "2");
+	//x265_param_parse(ctx->hevc_params, "rd", "3");
+	x265_param_parse(ctx->hevc_params, "ctu", "32");
+	x265_param_parse(ctx->hevc_params, "bframes", "8");
+	x265_param_parse(ctx->hevc_params, "ref", "3");
+	//x265_param_parse(ctx->hevc_params, "no-early-skip", "1");
 
 	sprintf(&val[0], "%d", g_x265_min_qp);
 printf("Setting QPmin to %s\n", val);
