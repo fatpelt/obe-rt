@@ -524,12 +524,11 @@ static int dispatch_payload(struct context_s *ctx, const unsigned char *buf, int
 	}
 
 	if (g_x265_nal_debug & 0x02) {
-		printf(MESSAGE_PREFIX " --  acquired %7d nal bytes, pts = %12" PRIi64 " dts = %12" PRIi64 ", ",
-			lengthBytes,
+		printf(MESSAGE_PREFIX " --  acquired                                                                            pts %13" PRIi64 " dts %13" PRIi64 ", ",
 			ctx->hevc_picture_out->pts,
 			ctx->hevc_picture_out->dts);
-		printf("poc %8d  sliceType %d [%s]\n",
-			ctx->hevc_picture_out->poc, ctx->hevc_picture_out->sliceType,
+		printf("sliceType %d [%s]\n",
+			ctx->hevc_picture_out->sliceType,
 			sliceTypeDesc(ctx->hevc_picture_out->sliceType));
 	}
 
@@ -577,6 +576,7 @@ static int dispatch_payload(struct context_s *ctx, const unsigned char *buf, int
 	 * capture hardware. The codec PTS is guaranteed sequence, a problem during signal loss.
 	 * The hardware clock is non-sequential - a better clock to handle signal loss.
 	 */
+#if 1
 	static int64_t last_dispatch_pts = 0;
 	if (ctx->enc_params->avc_param.b_interlaced) {
 		if (cf->pts == last_dispatch_pts) {
@@ -587,10 +587,10 @@ static int dispatch_payload(struct context_s *ctx, const unsigned char *buf, int
 		}
 		last_dispatch_pts = cf->pts;
 	}
+#endif
 
 	if (g_x265_nal_debug & 0x02) {
-		printf(MESSAGE_PREFIX " --    output %7d nal bytes, pts = %12" PRIi64 " dts = %12" PRIi64 "\n",
-			lengthBytes,
+		printf(MESSAGE_PREFIX " --    output                                                                            pts %13" PRIi64 " dts %13" PRIi64 "\n",
 			cf->pts,
 			cf->real_dts);
 	}
@@ -716,6 +716,7 @@ static int reconfigure_encoder(struct context_s *ctx)
 		fprintf(stderr, MESSAGE_PREFIX " failed to set default params\n");
 		return -1;
 	}
+
 
 //	ctx->hevc_params->fpsDenom = ctx->enc_params->avc_param.i_fps_den;
 //	ctx->hevc_params->fpsNum = ctx->enc_params->avc_param.i_fps_num;
