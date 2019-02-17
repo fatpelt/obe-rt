@@ -1147,6 +1147,8 @@ extern int64_t initial_audio_latency;
 /* x265 */
 extern int g_x265_monitor_bps;
 extern int g_x265_nal_debug;
+extern int g_x265_min_qp;
+extern int g_x265_min_qp_new;
 
 /* SEI Timestamping. */
 extern int g_sei_timestamping;
@@ -1201,6 +1203,8 @@ void display_variables()
     printf("codec.x265.nal_debug = %d [%s]\n",
         g_x265_nal_debug,
         g_x265_nal_debug == 0 ? "disabled" : "enabled");
+
+    printf("codec.x265.qpmin = %d\n", g_x265_min_qp);
 
     printf("video_encoder.last_pts = %" PRIi64 "\n", cpb_removal_time);
     printf("v - a                  = %" PRIi64 "  %" PRIi64 "(ms)\n", cpb_removal_time - cur_pts,
@@ -1295,6 +1299,10 @@ static int set_variable(char *command, obecli_command_t *child)
     } else
     if (strcasecmp(var, "codec.x265.nal_debug") == 0) {
         g_x265_nal_debug = val;
+    } else
+    if (strcasecmp(var, "codec.x265.qpmin") == 0) {
+        g_x265_min_qp = val;
+        g_x265_min_qp_new = 1;
     } else
     if (strcasecmp(var, "video_encoder.sei_timestamping") == 0) {
         g_sei_timestamping = val;
@@ -1459,6 +1467,9 @@ extern void mux_dump_queue(obe_t *h);
 
 extern ts_writer_t *g_mux_ts_writer_handle;
     ts_show_queues(g_mux_ts_writer_handle);
+
+extern void hevc_show_stats();
+    hevc_show_stats();
 
     return 0;
 }
