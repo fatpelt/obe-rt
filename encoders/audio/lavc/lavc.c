@@ -28,6 +28,8 @@
 #include <libavresample/avresample.h>
 #include <libavutil/opt.h>
 
+#define MODULE "[lavc]: "
+
 typedef struct
 {
     int obe_name;
@@ -60,9 +62,10 @@ static void *aac_start_encoder( void *ptr )
     AVDictionary *opts = NULL;
     char is_latm[2];
     uint8_t *audio_planes[8] = { NULL };
+    struct avfm_s avfm;
 
     if (enc_params->use_fifo_head_timing) {
-        fprintf(stderr, "Warning: LAVC encoder does not support the use_fifo_head_timing mode\n");
+        fprintf(stderr, MODULE "Warning: LAVC encoder does not support the use_fifo_head_timing mode\n");
     }
 
     avcodec_register_all();
@@ -70,7 +73,7 @@ static void *aac_start_encoder( void *ptr )
     codec = avcodec_alloc_context3( NULL );
     if( !codec )
     {
-        fprintf( stderr, "Malloc failed\n" );
+        fprintf(stderr, MODULE "Malloc failed\n");
         goto finish;
     }
 
@@ -82,20 +85,20 @@ static void *aac_start_encoder( void *ptr )
 
     if( lavc_encoders[i].obe_name == -1 )
     {
-        fprintf( stderr, "[lavc] Could not find encoder1\n" );
+        fprintf(stderr, MODULE "Could not find encoder1\n");
         goto finish;
     }
 
     AVCodec *enc = avcodec_find_encoder( lavc_encoders[i].lavc_name );
     if( !enc )
     {
-        fprintf( stderr, "[lavc] Could not find encoder2\n" );
+        fprintf(stderr, MODULE "Could not find encoder2\n");
         goto finish;
     }
 
     if( enc->sample_fmts[0] == -1 )
     {
-        fprintf( stderr, "[lavc] No valid sample formats\n" );
+        fprintf(stderr, MODULE "No valid sample formats\n");
         goto finish;
     }
 
@@ -116,14 +119,14 @@ static void *aac_start_encoder( void *ptr )
 
     if( avcodec_open2( codec, enc, &opts ) < 0 )
     {
-        fprintf( stderr, "[lavc] Could not open encoder\n" );
+        fprintf(stderr, MODULE "Could not open encoder\n");
         goto finish;
     }
 
     avr = avresample_alloc_context();
     if( !avr )
     {
-        fprintf( stderr, "Malloc failed\n" );
+        fprintf(stderr, MODULE "Malloc failed\n");
         goto finish;
     }
 
@@ -136,7 +139,7 @@ static void *aac_start_encoder( void *ptr )
 
     if( avresample_open( avr ) < 0 )
     {
-        fprintf( stderr, "Could not open AVResample\n" );
+        fprintf(stderr, MODULE "Could not open AVResample\n");
         goto finish;
     }
 
@@ -159,20 +162,20 @@ static void *aac_start_encoder( void *ptr )
     out_fifo = av_fifo_alloc( frame_size );
     if( !out_fifo )
     {
-        fprintf( stderr, "Malloc failed\n" );
+        fprintf(stderr, MODULE "Malloc failed\n");
         goto finish;
     }
 
     frame = avcodec_alloc_frame();
     if( !frame )
     {
-        fprintf( stderr, "Could not allocate frame\n" );
+        fprintf(stderr, MODULE "Could not allocate frame\n");
         goto finish;
     }
 
     if( av_samples_alloc( audio_planes, NULL, codec->channels, codec->frame_size, codec->sample_fmt, 0 ) < 0 )
     {
-        fprintf( stderr, "Could not allocate audio samples\n" );
+        fprintf(stderr, MODULE "Could not allocate audio samples\n");
         goto finish;
     }
 
@@ -191,6 +194,8 @@ static void *aac_start_encoder( void *ptr )
         }
 
         raw_frame = encoder->queue.queue[0];
+        memcpy(&avfm, &raw_frame->avfm, sizeof(avfm));
+
         pthread_mutex_unlock( &encoder->queue.mutex );
 
         if( cur_pts == -1 )
@@ -199,7 +204,7 @@ static void *aac_start_encoder( void *ptr )
         if( avresample_convert( avr, NULL, 0, raw_frame->audio_frame.num_samples, raw_frame->audio_frame.audio_data,
                                 raw_frame->audio_frame.linesize, raw_frame->audio_frame.num_samples ) < 0 )
         {
-            syslog( LOG_ERR, "[lavc] Sample format conversion failed\n" );
+            syslog(LOG_ERR, MODULE "Sample format conversion failed\n");
             break;
         }
 
@@ -222,7 +227,7 @@ static void *aac_start_encoder( void *ptr )
             ret = avcodec_encode_audio2( codec, &pkt, frame, &got_pkt );
             if( ret < 0 )
             {
-                syslog( LOG_ERR, "[lavc] Audio encoding failed\n" );
+                syslog(LOG_ERR, MODULE "Audio encoding failed\n");
                 goto finish;
             }
 
@@ -234,7 +239,7 @@ static void *aac_start_encoder( void *ptr )
 
             if( av_fifo_realloc2( out_fifo, av_fifo_size( out_fifo ) + pkt.size ) < 0 )
             {
-                syslog( LOG_ERR, "Malloc failed\n" );
+                syslog(LOG_ERR, MODULE "Malloc failed\n");
                 break;
             }
 
@@ -246,7 +251,7 @@ static void *aac_start_encoder( void *ptr )
                 coded_frame = new_coded_frame( encoder->output_stream_id, total_size );
                 if( !coded_frame )
                 {
-                    syslog( LOG_ERR, "Malloc failed\n" );
+                    syslog(LOG_ERR, MODULE "Malloc failed\n");
                     goto finish;
                 }
 
