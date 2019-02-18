@@ -42,7 +42,7 @@ static const lavc_encoder_t lavc_encoders[] =
     { -1, -1 },
 };
 
-static void *start_encoder( void *ptr )
+static void *aac_start_encoder( void *ptr )
 {
     obe_aud_enc_params_t *enc_params = ptr;
     obe_t *h = enc_params->h;
@@ -289,4 +289,4 @@ finish:
     return NULL;
 }
 
-const obe_aud_enc_func_t lavc_encoder = { start_encoder };
+const obe_aud_enc_func_t lavc_encoder = { aac_start_encoder };
