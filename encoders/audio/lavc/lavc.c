@@ -27,8 +27,12 @@
 #include <libavutil/fifo.h>
 #include <libavresample/avresample.h>
 #include <libavutil/opt.h>
+#include <libavutil/mathematics.h>
 
+#define HWCLK 0
 #define MODULE "[lavc]: "
+
+int g_aac_cf_debug = 0;
 
 typedef struct
 {
@@ -62,8 +66,14 @@ static void *aac_start_encoder( void *ptr )
     AVDictionary *opts = NULL;
     char is_latm[2];
     uint8_t *audio_planes[8] = { NULL };
-    struct avfm_s avfm;
 
+#if HWCLK
+    printf(MODULE "h/w clocking is enabled.\n");
+    struct avfm_s avfm;
+#endif
+    int64_t lastOutputFramePTS = 0; /* Last pts we output, we'll comare against future version to warn for discontinuities. */
+
+enc_params->use_fifo_head_timing = 1;
     if (enc_params->use_fifo_head_timing) {
         fprintf(stderr, MODULE "Warning: LAVC encoder does not support the use_fifo_head_timing mode\n");
     }
@@ -179,6 +189,11 @@ static void *aac_start_encoder( void *ptr )
         goto finish;
     }
 
+/* AAC has 1 frame per pes in lowest latency mode. */
+/* AAC has codec frame size of 1024. */
+printf(MODULE "frames per pes %d\n", enc_params->frames_per_pes);
+printf(MODULE "codec frame size %d\n", codec->frame_size);
+
     while( 1 )
     {
         /* TODO: detect bitrate or channel reconfig */
@@ -194,12 +209,23 @@ static void *aac_start_encoder( void *ptr )
         }
 
         raw_frame = encoder->queue.queue[0];
+#if HWCLK
+        if (raw_frame->avfm.audio_pts - avfm.audio_pts > (2 * 576000)) {
+            cur_pts = -1;
+        }
         memcpy(&avfm, &raw_frame->avfm, sizeof(avfm));
+#endif
 
         pthread_mutex_unlock( &encoder->queue.mutex );
 
-        if( cur_pts == -1 )
+        if( cur_pts == -1 ) {
+#if HWCLK
+            cur_pts = avfm.audio_pts;
+#else
             cur_pts = raw_frame->pts;
+#endif
+            printf(MODULE "audio pts reset to %" PRIi64 "\n", cur_pts);
+        }
 
         if( avresample_convert( avr, NULL, 0, raw_frame->audio_frame.num_samples, raw_frame->audio_frame.audio_data,
                                 raw_frame->audio_frame.linesize, raw_frame->audio_frame.num_samples ) < 0 )
@@ -212,6 +238,7 @@ static void *aac_start_encoder( void *ptr )
         raw_frame->release_frame( raw_frame );
         remove_from_queue( &encoder->queue );
 
+        /* While we have enough pcm samples to pass to the compressor... */
         while( avresample_available( avr ) >= codec->frame_size )
         {
             got_pkt = 0;
@@ -224,6 +251,7 @@ static void *aac_start_encoder( void *ptr )
             pkt.data = NULL;
             pkt.size = 0;
 
+            /* Compress some PCM into the codec of choice... */
             ret = avcodec_encode_audio2( codec, &pkt, frame, &got_pkt );
             if( ret < 0 )
             {
@@ -231,6 +259,7 @@ static void *aac_start_encoder( void *ptr )
                 goto finish;
             }
 
+            /* Continue until we have enough ooutput coded data for an entire downstream packet. */
             if( !got_pkt )
                 continue;
 
@@ -243,9 +272,13 @@ static void *aac_start_encoder( void *ptr )
                 break;
             }
 
+            /* Write the output codec data into a fifo, because we want to make downstream packets
+             * of exactly N frames (frames_per_pes).
+             */
             av_fifo_generic_write( out_fifo, pkt.data, pkt.size, NULL );
             obe_free_packet( &pkt );
 
+            /* When we've written enough output frames to the fifo, process a complete downstream packet. */
             if( num_frames == enc_params->frames_per_pes )
             {
                 coded_frame = new_coded_frame( encoder->output_stream_id, total_size );
@@ -254,13 +287,33 @@ static void *aac_start_encoder( void *ptr )
                     syslog(LOG_ERR, MODULE "Malloc failed\n");
                     goto finish;
                 }
-
                 av_fifo_generic_read( out_fifo, coded_frame->data, total_size, NULL );
-
                 coded_frame->pts = cur_pts;
                 coded_frame->pts += ((int64_t)stream->audio_offset_ms * 27000);
                 coded_frame->random_access = 1; /* Every frame output is a random access point */
                 coded_frame->type = CF_AUDIO;
+
+                if (g_aac_cf_debug && encoder->output_stream_id == 1) {
+                    double interval = coded_frame->pts - lastOutputFramePTS;
+                    printf(MODULE "strm %d output pts %13" PRIi64 " size %6d bytes, pts-interval %6.0fticks/%6.2fms\n",
+                        encoder->output_stream_id,
+                        coded_frame->pts,
+                        total_size,
+                        interval,
+                        interval / 27000.0);
+                }
+                if (lastOutputFramePTS + (576000 * enc_params->frames_per_pes) != coded_frame->pts) {
+                    if (encoder->output_stream_id == 1) {
+                    printf(MODULE "strm %d Output PTS discontinuity\n\tShould be %" PRIi64 " was %" PRIi64 " diff %9" PRIi64 " frames_per_pes %d\n",
+                        encoder->output_stream_id,
+                        lastOutputFramePTS + (576000 * enc_params->frames_per_pes),
+                        coded_frame->pts,
+                        coded_frame->pts - (lastOutputFramePTS + (576000 * enc_params->frames_per_pes)),
+                        enc_params->frames_per_pes);
+                    }
+                }
+
+                lastOutputFramePTS = coded_frame->pts;
                 add_to_queue( &h->mux_queue, coded_frame );
 
                 /* We need to generate PTS because frame sizes have changed */

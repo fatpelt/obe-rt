@@ -1150,6 +1150,9 @@ extern int g_x265_nal_debug;
 extern int g_x265_min_qp;
 extern int g_x265_min_qp_new;
 
+/* LAVC */
+extern int g_aac_cf_debug;
+
 /* SEI Timestamping. */
 extern int g_sei_timestamping;
 
@@ -1203,6 +1206,10 @@ void display_variables()
     printf("codec.x265.nal_debug = %d [%s]\n",
         g_x265_nal_debug,
         g_x265_nal_debug == 0 ? "disabled" : "enabled");
+
+    printf("codec.aac.debug = %d [%s]\n",
+        g_aac_cf_debug,
+        g_aac_cf_debug == 0 ? "disabled" : "enabled");
 
     printf("codec.x265.qpmin = %d\n", g_x265_min_qp);
 
@@ -1296,6 +1303,9 @@ static int set_variable(char *command, obecli_command_t *child)
     } else
     if (strcasecmp(var, "codec.x265.monitor_bps") == 0) {
         g_x265_monitor_bps = val;
+    } else
+    if (strcasecmp(var, "codec.aac.debug") == 0) {
+        g_aac_cf_debug = val;
     } else
     if (strcasecmp(var, "codec.x265.nal_debug") == 0) {
         g_x265_nal_debug = val;
