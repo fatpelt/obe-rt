@@ -695,10 +695,11 @@ static int reconfigure_encoder(struct context_s *ctx)
 	if (strlen(g_video_encoder_preset_name) > 0) {
 		strcpy(preset_name, g_video_encoder_preset_name);
 	} else {
-		strcpy(preset_name, "faster");
+		strcpy(preset_name, "ultrafast");
 	}
 
 	char tuning_name[64];
+printf("strlen tuning_name = %d\n", strlen(g_video_encoder_tuning_name));
 	if (strlen(g_video_encoder_tuning_name) > 0) {
 		strcpy(tuning_name, g_video_encoder_tuning_name);
 	} else {
@@ -787,14 +788,13 @@ static int reconfigure_encoder(struct context_s *ctx)
 		printf(MESSAGE_PREFIX "lookahead = %s\n", val); 
 		x265_param_parse(ctx->hevc_params, "rc-lookahead", val);
 	}
-	//x265_param_parse(ctx->hevc_params, "pmode", "1");
-	//x265_param_parse(ctx->hevc_params, "pme", "1");
-	//x265_param_parse(ctx->hevc_params, "slices", "2");
-	//x265_param_parse(ctx->hevc_params, "rd", "3");
-	x265_param_parse(ctx->hevc_params, "ctu", "32");
-	x265_param_parse(ctx->hevc_params, "bframes", "8");
-	x265_param_parse(ctx->hevc_params, "ref", "3");
-	//x265_param_parse(ctx->hevc_params, "no-early-skip", "1");
+
+	if ((strcmp(preset_name, "faster") == 0) && strcmp(tuning_name, "") == 0) {
+		printf(MESSAGE_PREFIX "Assuming coffeelake performance via adjustments\n");
+		x265_param_parse(ctx->hevc_params, "ctu", "32");
+		x265_param_parse(ctx->hevc_params, "bframes", "8");
+		x265_param_parse(ctx->hevc_params, "ref", "3");
+	}
 
 	sprintf(&val[0], "%d", g_x265_min_qp);
 printf("Setting QPmin to %s\n", val);
