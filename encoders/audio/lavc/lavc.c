@@ -29,7 +29,7 @@
 #include <libavutil/opt.h>
 #include <libavutil/mathematics.h>
 
-#define HWCLK 0
+#define HWCLK 1
 #define MODULE "[lavc]: "
 
 int g_aac_cf_debug = 0;
@@ -210,8 +210,8 @@ printf(MODULE "codec frame size %d\n", codec->frame_size);
 
         raw_frame = encoder->queue.queue[0];
 #if HWCLK
-        if (raw_frame->avfm.audio_pts - avfm.audio_pts > (2 * 576000)) {
-            cur_pts = -1;
+        if (raw_frame->avfm.audio_pts - avfm.audio_pts >= (2 * 576000)) {
+            cur_pts = -1; /* Reset the audio timebase from the hardware. */
         }
         memcpy(&avfm, &raw_frame->avfm, sizeof(avfm));
 #endif
@@ -220,11 +220,21 @@ printf(MODULE "codec frame size %d\n", codec->frame_size);
 
         if( cur_pts == -1 ) {
 #if HWCLK
+            /* Drain any fifos and zero our processing latency, the clock has been
+             * reset so we're rebasing time from the audio hardward clock.
+             */
             cur_pts = avfm.audio_pts;
+
+            printf(MODULE "strm %d audio pts reset to %" PRIi64 "\n",
+                encoder->output_stream_id,
+                cur_pts);
+
+            /* Drain the conversion fifos else we induce drift. */
+            av_fifo_drain(out_fifo, av_fifo_size(out_fifo));
+            avresample_read(avr, NULL, avresample_available(avr));
 #else
             cur_pts = raw_frame->pts;
 #endif
-            printf(MODULE "audio pts reset to %" PRIi64 "\n", cur_pts);
         }
 
         if( avresample_convert( avr, NULL, 0, raw_frame->audio_frame.num_samples, raw_frame->audio_frame.audio_data,
@@ -289,6 +299,10 @@ printf(MODULE "codec frame size %d\n", codec->frame_size);
                 }
                 av_fifo_generic_read( out_fifo, coded_frame->data, total_size, NULL );
                 coded_frame->pts = cur_pts;
+#if HWCLK
+                coded_frame->pts += (-80 * 27000); /* Audio vs HEVC/AVC is 80ms behind where it should be. */
+                                                   /* Add the offset so users don't have to. */
+#endif
                 coded_frame->pts += ((int64_t)stream->audio_offset_ms * 27000);
                 coded_frame->random_access = 1; /* Every frame output is a random access point */
                 coded_frame->type = CF_AUDIO;
