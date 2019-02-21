@@ -66,6 +66,11 @@ static void *start_encoder_mp2( void *ptr )
     obe_raw_frame_t *raw_frame;
     obe_coded_frame_t *coded_frame;
 
+    printf(MODULE "h/w clocking is enabled.\n");
+    struct avfm_s avfm;
+    int64_t cur_pts = -1, pts_increment = 0;
+
+
     /* Interesting 10.8.5 quirk related to the audio clock occasionally being ahead
      * of the video clock. This translates into 'too much' data in the audio fifo.
      * Because we previously used to put the same timestamp on multiple packets, or overly
@@ -98,11 +103,10 @@ static void *start_encoder_mp2( void *ptr )
     AVAudioResampleContext *avr = NULL;
     AVFifoBuffer *fifo = NULL;
 
-    int64_t fifoHeadPTS = 0; /* Keeping track of the audio timestamp every time the fifo is empty. */
-    int64_t lastCodedFramePTS = 0; /* The codec is burst. We have to keep tabs on the audio pts and adjust to avoid dup pts. */
     int64_t lastOutputFramePTS = 0; /* Last pts we output, we'll comare against future version to warn for discontinuities. */
 
-int64_t headset_bias = 0;
+    pts_increment = 648000 * enc_params->frames_per_pes; /* 24ms, the codec frame size * number of frames per pes. */
+
     /* Lock the mutex until we verify parameters */
     pthread_mutex_lock( &encoder->queue.mutex );
 
@@ -183,7 +187,33 @@ int64_t headset_bias = 0;
         }
 
         raw_frame = encoder->queue.queue[0];
+        if (raw_frame->avfm.audio_pts - avfm.audio_pts >= (2 * 648000)) {
+            cur_pts = -1; /* Reset the audio timebase from the hardware. */
+        }
+        memcpy(&avfm, &raw_frame->avfm, sizeof(avfm));
+
+        historical_int64_set(&avfm_pts, avfm.audio_pts);
+        //historical_int64_printf(&avfm_pts, "avfm_pts");
+
         pthread_mutex_unlock( &encoder->queue.mutex );
+
+        if (cur_pts == -1) {
+            /* Drain any fifos and zero our processing latency, the clock has been
+             * reset so we're rebasing time from the audio hardward clock.
+             */
+            cur_pts = avfm.audio_pts;
+
+            printf(MODULE "strm %d audio pts reset to %" PRIi64 "\n",
+                encoder->output_stream_id,
+                cur_pts);
+
+            /* Drain the conversion fifos else we induce drift. */
+            av_fifo_drain(fifo, av_fifo_size(fifo));
+            avresample_read(avr, NULL, avresample_available(avr));
+
+            output_size = twolame_encode_flush(tl_opts, output_buf, MP2_AUDIO_BUFFER_SIZE);
+printf("output size = %d\n", output_size);
+        }
 
         historical_int64_set(&rf_pts, raw_frame->pts);
         //historical_int64_printf(&rf_pts, "  rf_pts");
@@ -231,11 +261,6 @@ int64_t headset_bias = 0;
         free( audio_buf );
         audio_buf = NULL;
 
-        struct avfm_s avfm;
-        memcpy(&avfm, &raw_frame->avfm, sizeof(avfm));
-
-        historical_int64_set(&avfm_pts, avfm.audio_pts);
-        //historical_int64_printf(&avfm_pts, "avfm_pts");
 
         raw_frame->release_data( raw_frame );
         raw_frame->release_frame( raw_frame );
@@ -249,29 +274,6 @@ int64_t headset_bias = 0;
 
         av_fifo_generic_write( fifo, output_buf, output_size, NULL );
 
-        /* If the fifo is empty, and the compressor created some payload,
-         * reset the audio timebase to match the current latest audioframe.
-         */
-        if (output_size > 0 && av_fifo_size(fifo) >= output_size) {
-            fifoHeadPTS = avfm.audio_pts;
-
-/* TODO: Cleanup.
- * The audio hardware clock, on startup with 1080i59.95 video, has one of two values with 10.11.4 firmware.
- * Either the audio clocks is the value zero, or its 1801xxx. Reason unknown.
- * For the time being, fudge a bias into the PTS calculations so the output PTS is ALWAYS
- * in the right place - atleast for this specific standard.
- * Its unclean, we need to understand why the audio clock varies and create a reliable fix.
- */
-static int headsets = 0;
-if (headsets++ == 0 && fifoHeadPTS > 0) {
-    headset_bias  = 27000 * 18; /* Add 18ms */
-    headset_bias += (27000 / 2); /* Add .5ms */
-    headset_bias += (27000 / 4); /* Add .25ms */
-    printf("headset bias = %" PRIi64 ", head %" PRIi64 "\n", headset_bias, fifoHeadPTS);
-}
-        }
-
-        int framesProcessed = 0;
         while( av_fifo_size( fifo ) >= frame_size )
         {
             coded_frame = new_coded_frame( encoder->output_stream_id, frame_size );
@@ -289,82 +291,26 @@ if (headsets++ == 0 && fifoHeadPTS > 0) {
              * Hence, normal latency is N * pes frames.
              * OBE itself determines what N should be in various latency modes.
              */
-
-            /* In low latency configurations where the framerate (33ms) is larger than the audio interval (24ms),
-             * during audio data wrapping conditions we have to prepare two audio output frames for a single video frame.
-             * We cannot output two audio frames with the same PTS, we MUST adjust the audio output rate for the
-             * second audio frame. So, for low latency, for second frames, bump the audio pts by 24ms.
-             * The most obvious case for this fix is anything with a video framerate of > 24ms. IE. this fix
-             * is necessary for in i59.94 i50 30p, 24p etc.
-             * In no cases should we ever see more than two audio frames per video frame,
-             * for this to be untrue, a video frame would have to be atleast 48ms, which is less and 20.8fps.
-             * OBE does not support frames as low as 20.8fps.
-             */
-            framesProcessed++;
-            if (h->obe_system == OBE_SYSTEM_TYPE_LOWEST_LATENCY || h->obe_system == OBE_SYSTEM_TYPE_LOW_LATENCY) {
-                if (framesProcessed > 1 && enc_params->frames_per_pes == 1) {
-                    if (enc_params->use_fifo_head_timing == 1) 
-                        fifoHeadPTS += 648000;
-                    else
-                        coded_frame->avfm.audio_pts += 648000;
-                }
-            }
-
-            /* In  low latency mode, obe configures a single MP2 frame in every pes (enc_params->frames_per_pes), with a PTS interval of 24ms.
-             * In norm latency mode, obe configures        N MP2 frames in every pes, with a PTS interval of N*24ms.
-             * Typically, we see 96MS PTS increments in the transport packets, buts its equally valid to see 24ms.
-             * Depending on what latency mode we're in, we need to round to the nearest '24ms or N*' interval.
-             * Output PTS packets (27MHz) are rounded to nearest 24ms or N*24ms (typically 96ms for norm lat) interval on a 27MHz clock.
-             */
-            /* The outgoing PTS is rounded and based on recent h/w clock, so massive leaps in
-             * the h/w clock are automatically compensated for.
-             * 648000 represents number of ticks in 27Mhz clock for 24ms, the smallest MP2 framesize we can deliver.
-             * One problem with taking the latest audio pts and using it regardless, is that it can create PTS gaps
-             * of 24 * n ms in poor signal conditions (such as when doing 4-5 frame injections). Instead,
-             * we'll make a not of the current audio time when the fifo is empty. The fifo is empty every 3-4 audio
-             * raw frames. From this, we'll add N *24ms from that fifoHeadPTS time. This keeps the PTS output
-             * at a very reliably 24 * n MS under many more rough signal circumstances.
-             */
-
-            /* I think the fifo head timing is a better overall audio timing model, and we should consider moving to it
-             * in some future release. For the time beings its opt-in.
-             */
-            int64_t rounded_pts;
-            if (enc_params->use_fifo_head_timing == 0)
-                rounded_pts = av_rescale(coded_frame->avfm.audio_pts, OBE_CLOCK, 648000 * enc_params->frames_per_pes);
-            else
-                rounded_pts = av_rescale(fifoHeadPTS, OBE_CLOCK, 648000 * enc_params->frames_per_pes);
-
-            rounded_pts /= OBE_CLOCK;
-            rounded_pts *= (648000 * enc_params->frames_per_pes);
-rounded_pts += headset_bias;
-            coded_frame->pts = rounded_pts;
-
+            coded_frame->pts = cur_pts;
+            coded_frame->pts += (-47 * 27000LL);
             coded_frame->pts +=  ((int64_t)stream->audio_offset_ms * 27000LL);
             coded_frame->random_access = 1; /* Every frame output is a random access point */
             coded_frame->type = CF_AUDIO;
 
-            if (enc_params->use_fifo_head_timing) {
-                if (coded_frame->pts == lastCodedFramePTS) {
-                    coded_frame->pts += (648000 * enc_params->frames_per_pes);
-                }
-                lastCodedFramePTS = coded_frame->pts;
+            historical_int64_set(&cf_pts, coded_frame->pts);
+            //historical_int64_printf(&cf_pts, "  cf_pts");
 
-                historical_int64_set(&cf_pts, coded_frame->pts);
-                //historical_int64_printf(&cf_pts, "  cf_pts");
-
-                if (lastOutputFramePTS + (648000 * enc_params->frames_per_pes) != coded_frame->pts) {
-                    printf(MODULE "Output PTS discontinuity\n\tShould be %" PRIi64 " was %" PRIi64 " diff %9" PRIi64 " frames_per_pes %d\n",
-                        lastOutputFramePTS + (648000 * enc_params->frames_per_pes),
-                        coded_frame->pts,
-			(lastOutputFramePTS + (648000 * enc_params->frames_per_pes)) - coded_frame->pts,
-			enc_params->frames_per_pes);
-                }
-                lastOutputFramePTS = coded_frame->pts;
+            if (lastOutputFramePTS + (648000 * enc_params->frames_per_pes) != coded_frame->pts) {
+                printf(MODULE "Output PTS discontinuity\n\tShould be %" PRIi64 " was %" PRIi64 " diff %9" PRIi64 " frames_per_pes %d\n",
+                    lastOutputFramePTS + (648000 * enc_params->frames_per_pes),
+                    coded_frame->pts,
+                    (lastOutputFramePTS + (648000 * enc_params->frames_per_pes)) - coded_frame->pts,
+                    enc_params->frames_per_pes);
             }
-if (coded_frame->pts < 0)
-  coded_frame->pts = 0;
+            lastOutputFramePTS = coded_frame->pts;
             add_to_queue( &h->mux_queue, coded_frame );
+
+            cur_pts += pts_increment;
         }
     }
 
