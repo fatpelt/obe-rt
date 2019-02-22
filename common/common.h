@@ -572,6 +572,7 @@ struct obe_t
     obe_queue_t mux_smoothing_queue;
 
     /* Statistics and Monitoring */
+    int cea708_missing_count;
 
     /* Misc configurable system parameters */
     unsigned int probe_time_seconds;

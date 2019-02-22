@@ -276,6 +276,40 @@ fail:
     return -1;
 }
 
+int inject_708_cdp( obe_t *h, obe_raw_frame_t *raw_frame, uint8_t *cdp, int len)
+{
+    obe_user_data_t *tmp2, *user_data;
+
+    /* Return if user didn't select CEA-708 */
+    if( !check_user_selected_non_display_data( h, CAPTIONS_CEA_708, USER_DATA_LOCATION_FRAME ) )
+        return 0;
+
+    /* Return if there is already CEA-708 data in the frame */
+    if( check_active_non_display_data( raw_frame, USER_DATA_CEA_708_CDP ) )
+        return 0;
+
+    tmp2 = realloc( raw_frame->user_data, (raw_frame->num_user_data+1) * sizeof(*raw_frame->user_data) );
+    if( !tmp2 )
+        goto fail;
+
+    raw_frame->user_data = tmp2;
+    user_data = &raw_frame->user_data[raw_frame->num_user_data++];
+    user_data->len = len;
+    user_data->type = USER_DATA_CEA_708_CDP;
+    user_data->source = VANC_GENERIC;
+    user_data->data = malloc( user_data->len );
+    if( !user_data->data )
+        goto fail;
+
+    memcpy(user_data->data, cdp, len);
+
+    return 0;
+
+fail:
+    syslog( LOG_ERR, "Malloc failed\n" );
+    return -1;
+}
+
 #if 0
 static int parse_cea_608( uint16_t *line )
 {
