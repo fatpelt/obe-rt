@@ -71,4 +71,7 @@ const static obe_anc_identifier_t vanc_identifiers[] =
 
 int parse_vanc_line( obe_t *h, obe_sdi_non_display_data_t *non_display_data, obe_raw_frame_t *raw_frame,
                      uint16_t *line, int width, int line_number );
+
+/* Allow for injection of arbitrary CDPs into the pipeline */
+int inject_708_cdp( obe_t *h, obe_raw_frame_t *raw_frame, uint8_t *cdp, int len);
 #endif

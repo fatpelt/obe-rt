@@ -1460,6 +1460,27 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
             anc_buf_pos += anc_line_stride / 2;
         }
 
+        /* Check to see if 708 was present previously.  If we are expecting 708
+           and it's been more than five frames, inject a message to force a
+           reset in any downstream decoder */
+        if( check_user_selected_non_display_data( h, CAPTIONS_CEA_708,
+                                                  USER_DATA_LOCATION_FRAME ) &&
+            !check_active_non_display_data( raw_frame, USER_DATA_CEA_708_CDP ) )
+        {
+            if (h->cea708_missing_count++ == 5)
+            {
+                /* FIXME: for now only support 1080i (i.e. cc_count=20) */
+                const struct obe_to_decklink_video *fmt = decklink_ctx->enabled_mode_fmt;
+                if (fmt->timebase_num == 1001 && fmt->timebase_den == 30000) {
+                    uint8_t cdp[] = {0x96, 0x69, 0x49, 0x4f, 0x43, 0x02, 0x36, 0x72, 0xf4, 0xff, 0x02, 0x21, 0xfe, 0x8f, 0x00, 0xf8, 0x00, 0x00, 0xf8, 0x00, 0x00, 0xf8, 0x00, 0x00, 0xf8, 0x00, 0x00, 0xf8, 0x00, 0x00, 0xf8, 0x00, 0x00, 0xf8, 0x00, 0x00, 0xf8, 0x00, 0x00, 0xf8, 0x00, 0x00, 0xf8, 0x00, 0x00, 0xf8, 0x00, 0x00, 0xf8, 0x00, 0x00, 0xf8, 0x00, 0x00, 0xf8, 0x00, 0x00, 0xf8, 0x00, 0x00, 0xf8, 0x00, 0x00, 0xf8, 0x00, 0x00, 0xf8, 0x00, 0x00, 0x74, 0x02, 0x36, 0xbd };
+                    printf("Injecting 708 CDP!\n");
+                    inject_708_cdp(h, raw_frame, cdp, sizeof(cdp));
+                }
+            }
+        } else {
+            h->cea708_missing_count = 0;
+        }
+
         if( IS_SD( decklink_opts_->video_format ) && first_line != last_line )
         {
             /* Add a some VBI lines to the ancillary buffer */
