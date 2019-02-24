@@ -582,7 +582,9 @@ public:
         decklink_ctx_t *decklink_ctx = &decklink_opts_->decklink_ctx;
         if (decklink_opts_->probe == 0) {
             printf("%s() no format switching allowed outside of probe\n", __func__);
+            syslog(LOG_WARNING, "%s() no format switching allowed outside of probe\n", __func__);
             decklink_ctx->last_frame_time = 1;
+            exit(0);
         }
 
         int i = 0;
