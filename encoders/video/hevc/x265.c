@@ -774,7 +774,8 @@ printf("strlen tuning_name = %d\n", strlen(g_video_encoder_tuning_name));
 
 	if (ctx->h->obe_system == OBE_SYSTEM_TYPE_LOWEST_LATENCY) {
 		/* Found that in lowest mode, obe doesn't accept the param, but the codec reports underruns. */
-		ctx->enc_params->avc_param.rc.i_vbv_buffer_size = ctx->enc_params->avc_param.rc.i_vbv_max_bitrate;
+		ctx->enc_params->avc_param.rc.i_vbv_buffer_size = ctx->enc_params->avc_param.rc.i_vbv_max_bitrate * 24;
+		//ctx->enc_params->avc_param.rc.i_vbv_buffer_size = ctx->enc_params->avc_param.rc.i_vbv_max_bitrate;
 	}
 	sprintf(&val[0], "%d", ctx->enc_params->avc_param.rc.i_vbv_buffer_size);
 	x265_param_parse(ctx->hevc_params, "vbv-bufsize", val);
