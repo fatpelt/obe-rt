@@ -300,12 +300,29 @@ printf(MODULE "codec frame size %d\n", codec->frame_size);
                 av_fifo_generic_read( out_fifo, coded_frame->data, total_size, NULL );
                 coded_frame->pts = cur_pts;
 #if HWCLK
+                static int64_t ptsfixup = 0;
+                if (getenv("HALF_DUPLEX") && ptsfixup == 0) {
+                    /* Fixup the clock for 10.11.2, due to an audio clocking bug. */
+                    ptsfixup  = 900900;
+                    ptsfixup += (avfm.audio_pts - avfm.video_pts);
+printf("HALF_DUPLEX=1(1) ... ptsfixup %" PRIi64 "\n", ptsfixup);
+                    ptsfixup  = ptsfixup % 900900;
+printf("HALF_DUPLEX=1(2) ... ptsfixup %" PRIi64 "\n", ptsfixup);
+
+                    if ((avfm.audio_pts - avfm.video_pts) < 0 &&
+                        ((avfm.audio_pts - avfm.video_pts) > -181000)) {
+                        /* Round down, to avoid a one frame offset from video. */
+                        ptsfixup = ptsfixup + - 900900;
+                    }
+
+                }
                 /* We seem to be 33.2ms latent for 1080i, adjust it. Does this vary for low vs normal latency? */
                 coded_frame->pts += (-33 * 27000LL);
                 coded_frame->pts += (-2 * 2700LL);
                 if (h->obe_system == OBE_SYSTEM_TYPE_GENERIC) {
                     coded_frame->pts += (8 * 2700LL);
                 }
+                coded_frame->pts += (ptsfixup * -1);
 #endif
                 coded_frame->pts += ((int64_t)stream->audio_offset_ms * 27000);
                 coded_frame->random_access = 1; /* Every frame output is a random access point */
