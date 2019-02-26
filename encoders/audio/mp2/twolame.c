@@ -292,7 +292,11 @@ printf("output size = %d\n", output_size);
              * OBE itself determines what N should be in various latency modes.
              */
             coded_frame->pts = cur_pts;
-            coded_frame->pts += (-47 * 27000LL);
+            coded_frame->pts += (-6 * 2700LL); /* Adjust by .6ms */
+            if (h->obe_system == OBE_SYSTEM_TYPE_GENERIC) {
+                coded_frame->pts += (8 * 2700LL);
+            }
+
             coded_frame->pts +=  ((int64_t)stream->audio_offset_ms * 27000LL);
             coded_frame->random_access = 1; /* Every frame output is a random access point */
             coded_frame->type = CF_AUDIO;

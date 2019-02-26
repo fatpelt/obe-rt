@@ -300,8 +300,12 @@ printf(MODULE "codec frame size %d\n", codec->frame_size);
                 av_fifo_generic_read( out_fifo, coded_frame->data, total_size, NULL );
                 coded_frame->pts = cur_pts;
 #if HWCLK
-                coded_frame->pts += (-80 * 27000); /* Audio vs HEVC/AVC is 80ms behind where it should be. */
-                                                   /* Add the offset so users don't have to. */
+                /* We seem to be 33.2ms latent for 1080i, adjust it. Does this vary for low vs normal latency? */
+                coded_frame->pts += (-33 * 27000LL);
+                coded_frame->pts += (-2 * 2700LL);
+                if (h->obe_system == OBE_SYSTEM_TYPE_GENERIC) {
+                    coded_frame->pts += (8 * 2700LL);
+                }
 #endif
                 coded_frame->pts += ((int64_t)stream->audio_offset_ms * 27000);
                 coded_frame->random_access = 1; /* Every frame output is a random access point */
