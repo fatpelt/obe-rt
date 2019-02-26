@@ -31,6 +31,8 @@
 
 #define READ_OSD_VALUE 0
 
+#define AUDIO_PULSE_OFFSET_MEASURMEASURE 0
+
 extern "C"
 {
 #include "common/common.h"
@@ -1045,6 +1047,58 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
     int width = 0;
     int height = 0;
     int stride = 0;
+
+#if AUDIO_PULSE_OFFSET_MEASURMEASURE
+    {
+        /* For any given video frame demonstrating the one second blip pulse pattern, search
+         * The audio samples for the blip and report its row position (time offset since luma).
+         */
+        if (videoframe && audioframe) {
+            width = videoframe->GetWidth();
+            height = videoframe->GetHeight();
+            stride = videoframe->GetRowBytes();
+            uint8_t *v = NULL;
+            videoframe->GetBytes((void **)&v);
+            uint8_t *a = NULL;
+            audioframe->GetBytes((void **)&a);
+
+            int sfc = audioframe->GetSampleFrameCount();
+            int num_channels = decklink_opts_->num_channels;
+
+            if (*(v + 1) == 0xa2) {
+                printf("v %p a %p ... v: %02x %02x %02x %02x  a: %02x %02x %02x %02x\n",
+                    v, a, 
+                    *(v + 0),
+                    *(v + 1),
+                    *(v + 2),
+                    *(v + 3),
+                    *(a + 0),
+                    *(a + 1),
+                    *(a + 2),
+                    *(a + 3));
+            }
+
+            int disp = 0;
+            for (int i = 0; i < sfc; i++) {
+                uint8_t *row = a + (i * ((32 / 8) * num_channels));
+                if (*(row + 2) && *(row + 3) && disp < 3) {
+                    disp++;
+                    printf("a%5d: %02x %02x %02x %02x %02x %02x %02x %02x\n",
+                        i,
+                        *(row + 0),
+                        *(row + 1),
+                        *(row + 2),
+                        *(row + 3),
+                        *(row + 4),
+                        *(row + 5),
+                        *(row + 6),
+                        *(row + 7));
+                }
+            }
+
+        }
+    }
+#endif
 
     if (videoframe) {
         width = videoframe->GetWidth();
