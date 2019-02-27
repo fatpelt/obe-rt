@@ -802,7 +802,7 @@ printf("strlen tuning_name = %d\n", strlen(g_video_encoder_tuning_name));
 	}
 
 	sprintf(&val[0], "%d", g_x265_min_qp);
-printf("Setting QPmin to %s\n", val);
+	printf(MESSAGE_PREFIX "Setting QPmin to %s\n", val);
 	x265_param_parse(ctx->hevc_params, "qpmin", val);
 
 	if (ctx->enc_params->avc_param.i_threads < 8) {
