@@ -701,7 +701,6 @@ static int reconfigure_encoder(struct context_s *ctx)
 	}
 
 	char tuning_name[64];
-printf("strlen tuning_name = %d\n", strlen(g_video_encoder_tuning_name));
 	if (strlen(g_video_encoder_tuning_name) > 0) {
 		strcpy(tuning_name, g_video_encoder_tuning_name);
 	} else {
@@ -814,11 +813,13 @@ printf("strlen tuning_name = %d\n", strlen(g_video_encoder_tuning_name));
 	/* 0 Is preferred, which is 'autodetect' */
 	sprintf(&val[0], "%d", ctx->enc_params->avc_param.i_threads);
 	x265_param_parse(ctx->hevc_params, "frame-threads", val);
-	x265_param_parse(ctx->hevc_params, "strict-cbr", "1");
 
 	sprintf(&val[0], "%d", ctx->enc_params->avc_param.rc.i_bitrate);
 	x265_param_parse(ctx->hevc_params, "bitrate", val);
 
+	sprintf(&val[0], "%d", ctx->enc_params->avc_param.i_nal_hrd == 3 ? 0 : 1);
+	printf(MESSAGE_PREFIX "strict cbr is %s\n", val);
+	x265_param_parse(ctx->hevc_params, "strict-cbr", val);
 	return 0;
 }
 
