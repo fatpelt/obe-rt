@@ -282,6 +282,8 @@ static x265_picture *x265_picture_copy(x265_picture *pic)
 
         }
 
+	/* Note that this doesn't copy the SEI */
+
 	return p;
 }
 
