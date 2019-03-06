@@ -31,6 +31,7 @@
 
 #define HWCLK 1
 #define MODULE "[lavc]: "
+#define LOCAL_DEBUG 0
 
 int g_aac_cf_debug = 0;
 
@@ -209,6 +210,13 @@ printf(MODULE "codec frame size %d\n", codec->frame_size);
         }
 
         raw_frame = encoder->queue.queue[0];
+#if LOCAL_DEBUG
+        if (encoder->output_stream_id == 1) {
+            printf(MODULE "strm %d raw audio frame pts %" PRIi64 "\n",
+                encoder->output_stream_id,
+                raw_frame->avfm.audio_pts);
+        }
+#endif
 #if HWCLK
         if (raw_frame->avfm.audio_pts - avfm.audio_pts >= (2 * 576000)) {
             cur_pts = -1; /* Reset the audio timebase from the hardware. */
@@ -248,6 +256,13 @@ printf(MODULE "codec frame size %d\n", codec->frame_size);
         raw_frame->release_frame( raw_frame );
         remove_from_queue( &encoder->queue );
 
+#if LOCAL_DEBUG
+        if (encoder->output_stream_id == 1) {
+            printf(MODULE "strm %d #1 = %d need (%d)\n",
+                encoder->output_stream_id, avresample_available(avr), codec->frame_size);
+        }
+#endif
+
         /* While we have enough pcm samples to pass to the compressor... */
         while( avresample_available( avr ) >= codec->frame_size )
         {
@@ -269,6 +284,12 @@ printf(MODULE "codec frame size %d\n", codec->frame_size);
                 goto finish;
             }
 
+#if LOCAL_DEBUG
+            if (encoder->output_stream_id == 1) {
+                printf(MODULE "strm %d #2 got_pkt = %d, out_fifo size %d\n",
+                    encoder->output_stream_id, got_pkt, av_fifo_size(out_fifo));
+            }
+#endif
             /* Continue until we have enough ooutput coded data for an entire downstream packet. */
             if( !got_pkt )
                 continue;
@@ -288,6 +309,12 @@ printf(MODULE "codec frame size %d\n", codec->frame_size);
             av_fifo_generic_write( out_fifo, pkt.data, pkt.size, NULL );
             obe_free_packet( &pkt );
 
+#if LOCAL_DEBUG
+            if (encoder->output_stream_id == 1) {
+                printf(MODULE "strm %d #3 = %d == %d ?\n",
+                    encoder->output_stream_id, num_frames, enc_params->frames_per_pes);
+            }
+#endif
             /* When we've written enough output frames to the fifo, process a complete downstream packet. */
             if( num_frames == enc_params->frames_per_pes )
             {
