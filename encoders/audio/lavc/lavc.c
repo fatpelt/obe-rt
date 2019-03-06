@@ -189,8 +189,8 @@ enc_params->use_fifo_head_timing = 1;
         goto finish;
     }
 
-/* AAC has 1 frame per pes in lowest latency mode. */
-/* AAC has codec frame size of 1024. */
+/* AAC has 1 frame per pes in lowest latency mode, frame size 1024. */
+/* AAC has 6 frame per pes in normal latency mode, frame size 2048. */
 printf(MODULE "frames per pes %d\n", enc_params->frames_per_pes);
 printf(MODULE "codec frame size %d\n", codec->frame_size);
 
