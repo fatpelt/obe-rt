@@ -796,7 +796,7 @@ static int reconfigure_encoder(struct context_s *ctx)
 		/* Found that in lowest mode, obe doesn't accept the param, but the codec reports underruns. */
 		ctx->enc_params->avc_param.rc.i_vbv_buffer_size = ctx->enc_params->avc_param.rc.i_vbv_max_bitrate * 24;
 		ctx->enc_params->avc_param.rc.i_vbv_buffer_size = ctx->enc_params->avc_param.rc.i_vbv_max_bitrate * 4;
-		ctx->enc_params->avc_param.rc.i_vbv_buffer_size = ctx->enc_params->avc_param.rc.i_vbv_max_bitrate;
+		//ctx->enc_params->avc_param.rc.i_vbv_buffer_size = ctx->enc_params->avc_param.rc.i_vbv_max_bitrate;
 		printf(MESSAGE_PREFIX "vbv_bufsize = %d\n", ctx->enc_params->avc_param.rc.i_vbv_buffer_size);
 	}
 	sprintf(&val[0], "%d", ctx->enc_params->avc_param.rc.i_vbv_buffer_size);
