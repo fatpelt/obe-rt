@@ -213,7 +213,6 @@ static void *start_encoder_mp2( void *ptr )
             avresample_read(avr, NULL, avresample_available(avr));
 
             output_size = twolame_encode_flush(tl_opts, output_buf, MP2_AUDIO_BUFFER_SIZE);
-printf("output size = %d\n", output_size);
         }
 
         historical_int64_set(&rf_pts, raw_frame->pts);
