@@ -272,6 +272,9 @@ typedef struct
 #endif
 #define MAX_AUDIO_PAIRS 8
     struct audio_pair_s audio_pairs[MAX_AUDIO_PAIRS];
+
+    int isHalfDuplex;
+
 } decklink_ctx_t;
 
 typedef struct
@@ -792,6 +795,9 @@ static int processAudio(decklink_ctx_t *decklink_ctx, decklink_opts_t *decklink_
                 raw_frame->pts = packet_time;
 
                 avfm_init(&raw_frame->avfm, AVFM_AUDIO_PCM);
+                avfm_set_hw_status_mask(&raw_frame->avfm,
+                    decklink_ctx->isHalfDuplex ? AVFM_HW_STATUS__BLACKMAGIC_DUPLEX_HALF :
+                        AVFM_HW_STATUS__BLACKMAGIC_DUPLEX_FULL);
                 avfm_set_pts_video(&raw_frame->avfm, videoPTS);
                 avfm_set_pts_audio(&raw_frame->avfm, packet_time);
                 avfm_set_hw_received_time(&raw_frame->avfm);
@@ -829,6 +835,9 @@ static int processAudio(decklink_ctx_t *decklink_ctx, decklink_opts_t *decklink_
                 raw_frame->pts = packet_time;
 
                 avfm_init(&raw_frame->avfm, AVFM_AUDIO_A52);
+                avfm_set_hw_status_mask(&raw_frame->avfm,
+                    decklink_ctx->isHalfDuplex ? AVFM_HW_STATUS__BLACKMAGIC_DUPLEX_HALF :
+                        AVFM_HW_STATUS__BLACKMAGIC_DUPLEX_FULL);
                 avfm_set_pts_video(&raw_frame->avfm, videoPTS);
                 avfm_set_pts_audio(&raw_frame->avfm, packet_time);
                 avfm_set_hw_received_time(&raw_frame->avfm);
@@ -1667,6 +1676,9 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
             audioframe->GetPacketTime(&packet_time, OBE_CLOCK);
 
             avfm_init(&raw_frame->avfm, AVFM_VIDEO);
+            avfm_set_hw_status_mask(&raw_frame->avfm,
+                decklink_ctx->isHalfDuplex ? AVFM_HW_STATUS__BLACKMAGIC_DUPLEX_HALF :
+                    AVFM_HW_STATUS__BLACKMAGIC_DUPLEX_FULL);
             avfm_set_pts_video(&raw_frame->avfm, decklink_ctx->stream_time);
             avfm_set_pts_audio(&raw_frame->avfm, packet_time);
             avfm_set_hw_received_time(&raw_frame->avfm);
@@ -2050,6 +2062,7 @@ static int open_card( decklink_opts_t *decklink_opts )
     IDeckLinkIterator *decklink_iterator = NULL;
     HRESULT result;
     const struct obe_to_decklink_video *fmt = NULL;
+    IDeckLinkStatus *status = NULL;
 
     if (vanc_context_create(&decklink_ctx->vanchdl) < 0) {
         fprintf(stderr, "[decklink] Error initializing VANC library context\n");
@@ -2180,6 +2193,22 @@ static int open_card( decklink_opts_t *decklink_opts )
         fprintf( stderr, "[decklink] Card has no inputs\n" );
         ret = -1;
         goto finish;
+    }
+
+
+    if (decklink_ctx->p_card->QueryInterface(IID_IDeckLinkStatus, (void**)&status) == S_OK) {
+        int64_t ds = bmdDuplexStatusFullDuplex;
+        if (status->GetInt(bmdDeckLinkStatusDuplexMode, &ds) == S_OK) {
+        }
+        status->Release();
+        if (ds == bmdDuplexStatusFullDuplex) {
+            decklink_ctx->isHalfDuplex = 0;
+        } else
+        if (ds == bmdDuplexStatusHalfDuplex) {
+            decklink_ctx->isHalfDuplex = 1;
+        } else {
+            decklink_ctx->isHalfDuplex = 0;
+        }
     }
 
     /* Set up the video and audio sources. */
