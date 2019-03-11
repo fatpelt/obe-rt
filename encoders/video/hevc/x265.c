@@ -28,9 +28,11 @@
 #include <x265.h>
 
 #define LOCAL_DEBUG 0
+#define USE_CODEC_CLOCKS 1
 
 /* Debug feature, save each 1080i field picture as YUV to disk. */
 #define SAVE_FIELDS 0
+#define SKIP_ENCODE 0
 
 #define MESSAGE_PREFIX "[x265]:"
 
@@ -236,10 +238,20 @@ static void x265_picture_save(x265_picture *pic)
 	if (3) {
 		plane_len[2] = plane_len[1];
 	}
-	/* TODO: Highly specific to 1080i */
-	plane_len[0] = 1036800;
-	plane_len[1] = 259200;
-	plane_len[2] = 259200;
+
+	//printf("stride[0] = %d\n", pic->stride[0]);
+	if (pic->stride[0] == 1280) {
+		/* TODO: Highly specific to 720p */
+		plane_len[0] = 1280 * 720;
+		plane_len[1] = plane_len[0] / 4;
+		plane_len[2] = plane_len[0] / 4;
+	} else
+	if (pic->stride[0] == 1920) {
+		/* TODO: Highly specific to 1080i */
+		plane_len[0] = 1920 * 540;
+		plane_len[1] = plane_len[0] / 4;
+		plane_len[2] = plane_len[0] / 4;
+	}
 
 	for (int i = 0; i < 3; i++) {
 		if (pic->planes[i]) {
@@ -993,7 +1005,11 @@ printf("Restarting codec with new params ... done\n");
 #if SAVE_FIELDS
 					x265_picture_save(ctx->hevc_picture_in);
 #endif
+#if SKIP_ENCODE
+					ret = 0;
+#else
 					ret = x265_encoder_encode(ctx->hevc_encoder, &ctx->hevc_nals, &ctx->i_nal, ctx->hevc_picture_in, ctx->hevc_picture_out);
+#endif
 					if (ret > 0) {
 						x265_picture_analyze_stats(ctx, ctx->hevc_picture_out);
 						_process_nals(ctx, rf->arrival_time);
@@ -1002,9 +1018,7 @@ printf("Restarting codec with new params ... done\n");
 					}
 
 					ctx->i_nal = 0;
-#if SAVE_FIELDS
-					x265_picture_save(cpy);
-#endif
+
 					/* Backup the frame pointers, restore them later, so a free() doesn't complain that
 					 * we've adjusted the pointers.
 					 */
@@ -1014,7 +1028,18 @@ printf("Restarting codec with new params ... done\n");
 					/* Adjust the planes, point them to the bottom field. */
 					x265_picture_interlaced__update_planes_bottom_field(ctx, cpy);
 
+#if SAVE_FIELDS
+					x265_picture_save(cpy);
+#endif
+
+#if USE_CODEC_CLOCKS
+					cpy->pts = rf->avfm.audio_pts + (g_frame_duration / 2);
+#endif
+#if SKIP_ENCODE
+					ret = 0;
+#else
 					ret = x265_encoder_encode(ctx->hevc_encoder, &ctx->hevc_nals, &ctx->i_nal, cpy, ctx->hevc_picture_out);
+#endif
 					if (ret > 0) {
 						x265_picture_analyze_stats(ctx, ctx->hevc_picture_out);
 						_process_nals(ctx, rf->arrival_time);
@@ -1026,7 +1051,14 @@ printf("Restarting codec with new params ... done\n");
 					x265_picture_copy_plane_ptrs(cpy, &cpy_ptrs);
 					x265_picture_free_all(cpy);
 				} else {
+#if SAVE_FIELDS
+					x265_picture_save(ctx->hevc_picture_in);
+#endif
+#if SKIP_ENCODE
+					ret = 0;
+#else
 					ret = x265_encoder_encode(ctx->hevc_encoder, &ctx->hevc_nals, &ctx->i_nal, ctx->hevc_picture_in, ctx->hevc_picture_out);
+#endif
 					if (ret > 0) {
 						x265_picture_analyze_stats(ctx, ctx->hevc_picture_out);
 					}
