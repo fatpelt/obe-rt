@@ -565,10 +565,10 @@ static int dispatch_payload(struct context_s *ctx, const unsigned char *buf, int
 	memcpy(cf->data, buf, lengthBytes);
 	cf->len                      = lengthBytes;
 	cf->type                     = CF_VIDEO;
-#if 0
+#if USE_CODEC_CLOCKS
 	/* Rely on the PTS time that comes from the s/w codec. */
-	cf->pts                      = ctx->hevc_picture_out->pts + 45000;
-	cf->real_pts                 = ctx->hevc_picture_out->pts + 45000;
+	cf->pts                      = ctx->hevc_picture_out->pts;
+	cf->real_pts                 = ctx->hevc_picture_out->pts;
 	cf->real_dts                 = ctx->hevc_picture_out->dts;
 #else
 	/* Recalculate a new real pts/dts based on the hardware time, not the codec time. */
@@ -590,17 +590,24 @@ static int dispatch_payload(struct context_s *ctx, const unsigned char *buf, int
 	 * capture hardware. The codec PTS is guaranteed sequence, a problem during signal loss.
 	 * The hardware clock is non-sequential - a better clock to handle signal loss.
 	 */
-#if 1
+#if USE_CODEC_CLOCKS
+#else
 	static int64_t last_dispatch_pts = 0;
+#endif
 	if (ctx->enc_params->avc_param.b_interlaced) {
+#if USE_CODEC_CLOCKS
+#else
 		if (cf->pts == last_dispatch_pts) {
 			cf->pts += (g_frame_duration / 2);
 			/* Recalculate a new real pts/dts based on the hardware time, not the codec time. */
 			cf->real_pts = cf->pts;
 			cf->real_dts = cf->pts;
 		}
-		last_dispatch_pts = cf->pts;
+#endif
 	}
+#if USE_CODEC_CLOCKS
+#else
+	last_dispatch_pts = cf->pts;
 #endif
 
 	if (g_x265_nal_debug & 0x02) {
