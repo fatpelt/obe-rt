@@ -29,7 +29,6 @@
 #include <libavutil/opt.h>
 #include <libavutil/mathematics.h>
 
-#define HWCLK 1
 #define MODULE "[lavc]: "
 #define LOCAL_DEBUG 0
 
@@ -67,11 +66,9 @@ static void *aac_start_encoder( void *ptr )
     AVDictionary *opts = NULL;
     char is_latm[2];
     uint8_t *audio_planes[8] = { NULL };
+    int64_t ptsfixup = 0;
 
-#if HWCLK
-    printf(MODULE "h/w clocking is enabled.\n");
     struct avfm_s avfm;
-#endif
     int64_t lastOutputFramePTS = 0; /* Last pts we output, we'll comare against future version to warn for discontinuities. */
 
 enc_params->use_fifo_head_timing = 1;
@@ -217,21 +214,19 @@ printf(MODULE "codec frame size %d\n", codec->frame_size);
                 raw_frame->avfm.audio_pts);
         }
 #endif
-#if HWCLK
         if (raw_frame->avfm.audio_pts - avfm.audio_pts >= (2 * 576000)) {
             cur_pts = -1; /* Reset the audio timebase from the hardware. */
         }
         memcpy(&avfm, &raw_frame->avfm, sizeof(avfm));
-#endif
 
         pthread_mutex_unlock( &encoder->queue.mutex );
 
         if( cur_pts == -1 ) {
-#if HWCLK
             /* Drain any fifos and zero our processing latency, the clock has been
              * reset so we're rebasing time from the audio hardward clock.
              */
             cur_pts = avfm.audio_pts;
+            ptsfixup = 0;
 
             printf(MODULE "strm %d audio pts reset to %" PRIi64 "\n",
                 encoder->output_stream_id,
@@ -240,9 +235,8 @@ printf(MODULE "codec frame size %d\n", codec->frame_size);
             /* Drain the conversion fifos else we induce drift. */
             av_fifo_drain(out_fifo, av_fifo_size(out_fifo));
             avresample_read(avr, NULL, avresample_available(avr));
-#else
-            cur_pts = raw_frame->pts;
-#endif
+            num_frames = 0;
+            total_size = 0;
         }
 
         if( avresample_convert( avr, NULL, 0, raw_frame->audio_frame.num_samples, raw_frame->audio_frame.audio_data,
@@ -312,31 +306,49 @@ printf(MODULE "codec frame size %d\n", codec->frame_size);
                 }
                 av_fifo_generic_read( out_fifo, coded_frame->data, total_size, NULL );
                 coded_frame->pts = cur_pts;
-#if HWCLK
-                static int64_t ptsfixup = 0;
-                if (getenv("HALF_DUPLEX") && ptsfixup == 0) {
-                    /* Fixup the clock for 10.11.2, due to an audio clocking bug. */
-                    ptsfixup  = 900900;
-                    ptsfixup += (avfm.audio_pts - avfm.video_pts);
-printf("HALF_DUPLEX=1(1) ... ptsfixup %" PRIi64 "\n", ptsfixup);
-                    ptsfixup  = ptsfixup % 900900;
-printf("HALF_DUPLEX=1(2) ... ptsfixup %" PRIi64 "\n", ptsfixup);
 
-                    if ((avfm.audio_pts - avfm.video_pts) < 0 &&
-                        ((avfm.audio_pts - avfm.video_pts) > -181000)) {
-                        /* Round down, to avoid a one frame offset from video. */
-                        ptsfixup = ptsfixup + - 900900;
+                /* Fixup the clock for 10.11.2, due to an audio clocking bug.
+                 * On startup of the sdk, the audio offset vs video offset differs a lot in
+                 * half-duplex mode, it doesn't vary in full duplex mode.
+                 * Additionally, cable pulls causes the audio offset to shift vs the video offset,
+                 * quite substantially.
+                 * Fixup the audio offset to compensate for all of this.
+                 * Currently this is all highly specific to 1080i29.97.
+                 */
+                if (ptsfixup == 0 &&
+                    avfm_get_hw_status_mask(&avfm, AVFM_HW_STATUS__BLACKMAGIC_DUPLEX_HALF)) {
+
+                    int64_t drift = avfm_get_av_drift(&avfm);
+                    int64_t drifted_frames = (drift / 900900);
+
+                    ptsfixup = drift % 900900;
+                    if (drifted_frames == 0) {
+                        if (ptsfixup < -181000) {
+                            drifted_frames++;
+                        } else
+                        if (ptsfixup > (900900 - 181000)) {
+                            drifted_frames--;
+                        }
+                    } else {
+                        if (drift > 0) {
+                            drifted_frames = 0;
+                            if (ptsfixup > (900900 - 181000))
+                                drifted_frames--;
+                        } else {
+                            drifted_frames *= -1;
+                        }
+
                     }
-
+                    ptsfixup += (drifted_frames * 900900);
                 }
+
                 /* We seem to be 33.2ms latent for 1080i, adjust it. Does this vary for low vs normal latency? */
                 coded_frame->pts += (-33 * 27000LL);
                 coded_frame->pts += (-2 * 2700LL);
                 if (h->obe_system == OBE_SYSTEM_TYPE_GENERIC) {
-                    coded_frame->pts += (8 * 2700LL);
+                    //coded_frame->pts += (8 * 2700LL);
                 }
                 coded_frame->pts += (ptsfixup * -1);
-#endif
                 coded_frame->pts += ((int64_t)stream->audio_offset_ms * 27000);
                 coded_frame->random_access = 1; /* Every frame output is a random access point */
                 coded_frame->type = CF_AUDIO;

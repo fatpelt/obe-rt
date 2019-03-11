@@ -65,6 +65,7 @@ static void *start_encoder_mp2( void *ptr )
     obe_output_stream_t *stream = enc_params->stream;
     obe_raw_frame_t *raw_frame;
     obe_coded_frame_t *coded_frame;
+    int64_t ptsfixup = 0;
 
     printf(MODULE "h/w clocking is enabled.\n");
     struct avfm_s avfm;
@@ -202,6 +203,7 @@ static void *start_encoder_mp2( void *ptr )
              * reset so we're rebasing time from the audio hardward clock.
              */
             cur_pts = avfm.audio_pts;
+            ptsfixup = 0;
 
             printf(MODULE "strm %d audio pts reset to %" PRIi64 "\n",
                 encoder->output_stream_id,
@@ -292,11 +294,40 @@ printf("output size = %d\n", output_size);
              * OBE itself determines what N should be in various latency modes.
              */
             coded_frame->pts = cur_pts;
-            coded_frame->pts += (-6 * 2700LL); /* Adjust by .6ms */
-            if (h->obe_system == OBE_SYSTEM_TYPE_GENERIC) {
-                coded_frame->pts += (8 * 2700LL);
-            }
 
+            /* This code originated from the aac implementation in lavc.c
+             * The comments related to how and why should be maintained there.
+             */
+            if (ptsfixup == 0 &&
+                avfm_get_hw_status_mask(&avfm, AVFM_HW_STATUS__BLACKMAGIC_DUPLEX_HALF)) {
+
+                /* Fixup the clock for 10.11.2, due to an audio clocking bug. */
+                int64_t drift = avfm_get_av_drift(&avfm);
+                int64_t drifted_frames = (drift / 900900);
+
+                ptsfixup = drift % 900900;
+
+                if (drifted_frames == 0) {
+                    if (ptsfixup < -181000) {
+                        drifted_frames++;
+                    } else
+                    if (ptsfixup > (900900 - 181000)) {
+                        drifted_frames--;
+                    }
+                } else {
+                    if (drift > 0) {
+                        drifted_frames = 0;
+                        if (ptsfixup > (900900 - 181000))
+                            drifted_frames--;
+                    } else {
+                        drifted_frames *= -1;
+                    }
+
+                }
+                ptsfixup += (drifted_frames * 900900);
+            }
+            coded_frame->pts += (ptsfixup * -1);
+                    
             coded_frame->pts +=  ((int64_t)stream->audio_offset_ms * 27000LL);
             coded_frame->random_access = 1; /* Every frame output is a random access point */
             coded_frame->type = CF_AUDIO;
