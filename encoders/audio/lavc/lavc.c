@@ -71,11 +71,6 @@ static void *aac_start_encoder( void *ptr )
     struct avfm_s avfm;
     int64_t lastOutputFramePTS = 0; /* Last pts we output, we'll comare against future version to warn for discontinuities. */
 
-enc_params->use_fifo_head_timing = 1;
-    if (enc_params->use_fifo_head_timing) {
-        fprintf(stderr, MODULE "Warning: LAVC encoder does not support the use_fifo_head_timing mode\n");
-    }
-
     avcodec_register_all();
 
     codec = avcodec_alloc_context3( NULL );
