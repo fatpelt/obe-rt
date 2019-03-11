@@ -325,6 +325,7 @@ struct avfm_s {
     int64_t audio_pts_corrected; /* 27MHz */
     int64_t video_pts; /* 27MHz */
     struct timeval hw_received_tv; /* Wall clock time the frame was received from the hardware. */
+    int64_t av_drift; /* 27MHz - Calculation of audio_pts minus video_pts */
 };
 
 __inline__ void avfm_init(struct avfm_s *s, enum avfm_frame_type_e frame_type) {
@@ -338,10 +339,12 @@ __inline__ void avfm_init(struct avfm_s *s, enum avfm_frame_type_e frame_type) {
 
 __inline__ void avfm_set_pts_video(struct avfm_s *s, int64_t pts) {
     s->video_pts = pts;
+    s->av_drift = s->audio_pts - s->video_pts;
 }
 
 __inline__ void avfm_set_pts_audio(struct avfm_s *s, int64_t pts) {
     s->audio_pts = pts;
+    s->av_drift = s->audio_pts - s->video_pts;
 }
 
 __inline__ void avfm_set_pts_audio_corrected(struct avfm_s *s, int64_t pts) {
@@ -354,6 +357,10 @@ __inline__ void avfm_set_hw_received_time(struct avfm_s *s) {
 
 __inline__ unsigned int avfm_get_hw_received_tv_sec(struct avfm_s *s) {
     return (unsigned int)s->hw_received_tv.tv_sec;
+}
+
+__inline__ int64_t avfm_get_av_drift(struct avfm_s *s) {
+    return s->av_drift;
 }
 
 __inline__ unsigned int avfm_get_hw_received_tv_usec(struct avfm_s *s) {
