@@ -284,9 +284,14 @@ printf(MODULE "codec frame size %d\n", codec->frame_size);
             total_size += pkt.size;
             num_frames++;
 
-            if( av_fifo_realloc2( out_fifo, av_fifo_size( out_fifo ) + pkt.size ) < 0 )
+            if (av_fifo_realloc2(out_fifo, av_fifo_size(out_fifo) + pkt.size) < 0)
             {
-                syslog(LOG_ERR, MODULE "Malloc failed\n");
+                char msg[128];
+                sprintf(msg, MODULE "malloc av_fifo_realloc2(?, %d + %d)\n",
+                    av_fifo_size(out_fifo),
+                    pkt.size);
+                fprintf(stderr, "%s\n", msg);
+                syslog(LOG_ERR, msg);
                 break;
             }
 
