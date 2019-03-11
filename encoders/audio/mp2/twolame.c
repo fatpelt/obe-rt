@@ -67,7 +67,6 @@ static void *start_encoder_mp2( void *ptr )
     obe_coded_frame_t *coded_frame;
     int64_t ptsfixup = 0;
 
-    printf(MODULE "h/w clocking is enabled.\n");
     struct avfm_s avfm;
     int64_t cur_pts = -1, pts_increment = 0;
 
