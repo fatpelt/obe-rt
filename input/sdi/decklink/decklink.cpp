@@ -1152,7 +1152,7 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
         if (atime == 0)
             last_atime = 0;
 
-        printf("vtime %012" PRIi64 ":%" PRIi64 "  atime %012" PRIi64 ":%" PRIi64 "  vduration %" PRIi64 " a-vdiff: %" PRIi64,
+        printf("vtime %012" PRIi64 ":%08" PRIi64 "  atime %012" PRIi64 ":%08" PRIi64 "  vduration %" PRIi64 " a-vdiff: %" PRIi64,
             vtime,
             vtime - last_vtime,
             atime,
