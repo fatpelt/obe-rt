@@ -2045,7 +2045,7 @@ static void * detector_callback(void *user_context,
         return 0;
 }
 
-static int open_card( decklink_opts_t *decklink_opts )
+static int open_card( decklink_opts_t *decklink_opts, int allowFormatDetection)
 {
     decklink_ctx_t *decklink_ctx = &decklink_opts->decklink_ctx;
     int         found_mode;
@@ -2257,7 +2257,7 @@ static int open_card( decklink_opts_t *decklink_opts )
         goto finish;
     }
 
-    if( supported )
+    if (supported && allowFormatDetection)
         flags = bmdVideoInputEnableFormatDetection;
 
     /* Get the list of display modes. */
@@ -2481,7 +2481,7 @@ static void *probe_stream( void *ptr )
     decklink_ctx->h = h;
     decklink_ctx->last_frame_time = -1;
 
-    if( open_card( decklink_opts ) < 0 )
+    if (open_card(decklink_opts, 1) < 0)
         goto finish;
 
     /* Wait for up to 10 seconds, checking for a probe success every 100ms.
@@ -2716,7 +2716,7 @@ static void *open_input( void *ptr )
 
     /* TODO: wait for encoder */
 
-    if( open_card( decklink_opts ) < 0 )
+    if (open_card(decklink_opts, 0) < 0)
         return NULL;
 
     sleep( INT_MAX );
