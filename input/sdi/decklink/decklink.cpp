@@ -33,6 +33,8 @@
 
 #define AUDIO_PULSE_OFFSET_MEASURMEASURE 0
 
+#define PREFIX "[decklink]: "
+
 extern "C"
 {
 #include "common/common.h"
@@ -56,6 +58,9 @@ extern "C"
 #define container_of(ptr, type, member) ({          \
     const typeof(((type *)0)->member)*__mptr = (ptr);    \
              (type *)((char *)__mptr - offsetof(type, member)); })
+
+static int64_t clock_offset = 0;
+static uint64_t framesQueued = 0;
 
 #define DECKLINK_VANC_LINES 100
 
@@ -798,8 +803,8 @@ static int processAudio(decklink_ctx_t *decklink_ctx, decklink_opts_t *decklink_
                 avfm_set_hw_status_mask(&raw_frame->avfm,
                     decklink_ctx->isHalfDuplex ? AVFM_HW_STATUS__BLACKMAGIC_DUPLEX_HALF :
                         AVFM_HW_STATUS__BLACKMAGIC_DUPLEX_FULL);
-                avfm_set_pts_video(&raw_frame->avfm, videoPTS);
-                avfm_set_pts_audio(&raw_frame->avfm, packet_time);
+                avfm_set_pts_video(&raw_frame->avfm, videoPTS + clock_offset);
+                avfm_set_pts_audio(&raw_frame->avfm, packet_time + clock_offset);
                 avfm_set_hw_received_time(&raw_frame->avfm);
 
                 raw_frame->release_data = obe_release_audio_data;
@@ -838,8 +843,8 @@ static int processAudio(decklink_ctx_t *decklink_ctx, decklink_opts_t *decklink_
                 avfm_set_hw_status_mask(&raw_frame->avfm,
                     decklink_ctx->isHalfDuplex ? AVFM_HW_STATUS__BLACKMAGIC_DUPLEX_HALF :
                         AVFM_HW_STATUS__BLACKMAGIC_DUPLEX_FULL);
-                avfm_set_pts_video(&raw_frame->avfm, videoPTS);
-                avfm_set_pts_audio(&raw_frame->avfm, packet_time);
+                avfm_set_pts_video(&raw_frame->avfm, videoPTS + clock_offset);
+                avfm_set_pts_audio(&raw_frame->avfm, packet_time + clock_offset);
                 avfm_set_hw_received_time(&raw_frame->avfm);
                 //avfm_dump(&raw_frame->avfm);
 
@@ -1006,7 +1011,7 @@ HRESULT DeckLinkCaptureDelegate::noVideoInputFrameArrived(IDeckLinkVideoInputFra
 	BMDTimeValue packet_time;
 	audioframe->GetPacketTime(&packet_time, OBE_CLOCK);
 
-	avfm_set_pts_video(&raw_frame->avfm, decklink_ctx->stream_time);
+	avfm_set_pts_video(&raw_frame->avfm, decklink_ctx->stream_time + clock_offset);
 
 	/* Normally we put the audio and the video clocks into the timing
 	 * avfm metadata, and downstream codecs can calculate their timing
@@ -1024,7 +1029,7 @@ HRESULT DeckLinkCaptureDelegate::noVideoInputFrameArrived(IDeckLinkVideoInputFra
 	 * The remedy, in LOS conditions, use the video clock as the audio clock
 	 * when building timing metadata.
 	 */
-	avfm_set_pts_audio(&raw_frame->avfm, decklink_ctx->stream_time);
+	avfm_set_pts_audio(&raw_frame->avfm, decklink_ctx->stream_time + clock_offset);
 
 	avfm_set_hw_received_time(&raw_frame->avfm);
 #if 1
@@ -1675,12 +1680,18 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
             BMDTimeValue packet_time;
             audioframe->GetPacketTime(&packet_time, OBE_CLOCK);
 
+            if (framesQueued++ == 0) {
+                clock_offset = (packet_time * -1);
+                //printf(PREFIX "Clock offset established as %" PRIi64 "\n", clock_offset);
+
+            }
+
             avfm_init(&raw_frame->avfm, AVFM_VIDEO);
             avfm_set_hw_status_mask(&raw_frame->avfm,
                 decklink_ctx->isHalfDuplex ? AVFM_HW_STATUS__BLACKMAGIC_DUPLEX_HALF :
                     AVFM_HW_STATUS__BLACKMAGIC_DUPLEX_FULL);
-            avfm_set_pts_video(&raw_frame->avfm, decklink_ctx->stream_time);
-            avfm_set_pts_audio(&raw_frame->avfm, packet_time);
+            avfm_set_pts_video(&raw_frame->avfm, decklink_ctx->stream_time + clock_offset);
+            avfm_set_pts_audio(&raw_frame->avfm, packet_time + clock_offset);
             avfm_set_hw_received_time(&raw_frame->avfm);
             //avfm_dump(&raw_frame->avfm);
 
@@ -2054,6 +2065,7 @@ static int open_card( decklink_opts_t *decklink_opts, int allowFormatDetection)
     const int   sample_rate = 48000;
     const char *model_name;
     BMDDisplayMode wanted_mode_id;
+    BMDDisplayMode start_mode_id = bmdModePAL;
     IDeckLinkAttributes *decklink_attributes = NULL;
     uint32_t    flags = 0;
     bool        supported;
@@ -2353,10 +2365,12 @@ static int open_card( decklink_opts_t *decklink_opts, int allowFormatDetection)
         goto finish;
     }
 
-    printf("%s() calling enable video with mode %s\n", __func__, getModeName(wanted_mode_id));
     decklink_ctx->enabled_mode_id = wanted_mode_id;
     decklink_ctx->enabled_mode_fmt = getVideoFormatByMode(decklink_ctx->enabled_mode_id);
+
     result = decklink_ctx->p_input->EnableVideoInput(decklink_ctx->enabled_mode_id, bmdFormat10BitYUV, flags);
+    printf("%s() startup. calling enable video with startup mode %s flags 0x%x\n", __func__,
+        getModeName(decklink_ctx->enabled_mode_id), flags);
     if( result != S_OK )
     {
         fprintf( stderr, "[decklink] Failed to enable video input\n" );
