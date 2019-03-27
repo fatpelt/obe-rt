@@ -337,8 +337,7 @@ printf(MODULE "codec frame size %d\n", codec->frame_size);
 
                     }
                     ptsfixup += (drifted_frames * video_interval_clk);
-                } else
-                    ptsfixup = 0;
+                }
 
                 /* We seem to be 33.2ms latent for 1080i, adjust it. Does this vary for low vs normal latency? */
                 coded_frame->pts += (-33 * 27000LL);

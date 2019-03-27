@@ -326,8 +326,7 @@ static void *start_encoder_mp2( void *ptr )
 
                 }
                 ptsfixup += (drifted_frames * video_interval_clk);
-            } else
-                ptsfixup = 0;
+            }
 
             coded_frame->pts += (ptsfixup * -1);
 
