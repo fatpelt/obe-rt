@@ -1227,7 +1227,7 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
             //printf("%s -- decklink a/v ratio loss is %f\n", t, diff);
             /* If loss of a/v frames vs full frames (with a+v) falls below 75%, exit. */
             /* Based on observed condition, the loss quickly reaches 50%, hence 75% is very safe. */
-            if (diff > 0 && diff / g_decklink_fake_every_other_frame_lose_video_count < 0.75) {
+            if (diff > 0 && g_decklink_fake_every_other_frame_lose_audio_count / g_decklink_fake_every_other_frame_lose_video_count < 0.75) {
                 char msg[128];
                 sprintf(msg, "Decklink card index %i: video (%f) to audio (%f) frames ratio too low, aborting.\n",
                     decklink_opts_->card_idx,
