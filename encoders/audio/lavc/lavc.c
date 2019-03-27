@@ -311,7 +311,8 @@ printf(MODULE "codec frame size %d\n", codec->frame_size);
                  * Currently this is all highly specific to 1080i29.97.
                  */
                 if (ptsfixup == 0 &&
-                    avfm_get_hw_status_mask(&avfm, AVFM_HW_STATUS__BLACKMAGIC_DUPLEX_HALF)) {
+                    avfm_get_hw_status_mask(&avfm, AVFM_HW_STATUS__BLACKMAGIC_DUPLEX_HALF) &&
+                    avfm_get_video_interval_clk(&avfm) == 900900) {
 
                     int64_t drift = avfm_get_av_drift(&avfm);
                     int64_t video_interval_clk = avfm_get_video_interval_clk(&avfm);
@@ -336,7 +337,8 @@ printf(MODULE "codec frame size %d\n", codec->frame_size);
 
                     }
                     ptsfixup += (drifted_frames * video_interval_clk);
-                }
+                } else
+                    ptsfixup = 0;
 
                 /* We seem to be 33.2ms latent for 1080i, adjust it. Does this vary for low vs normal latency? */
                 coded_frame->pts += (-33 * 27000LL);

@@ -295,9 +295,11 @@ static void *start_encoder_mp2( void *ptr )
 
             /* This code originated from the aac implementation in lavc.c
              * The comments related to how and why should be maintained there.
+             * Highly specific to 29.97 for the time being.
              */
             if (ptsfixup == 0 &&
-                avfm_get_hw_status_mask(&avfm, AVFM_HW_STATUS__BLACKMAGIC_DUPLEX_HALF)) {
+                avfm_get_hw_status_mask(&avfm, AVFM_HW_STATUS__BLACKMAGIC_DUPLEX_HALF) &&
+                avfm_get_video_interval_clk(&avfm) == 900900) {
 
                 /* Fixup the clock for 10.11.2, due to an audio clocking bug. */
                 int64_t drift = avfm_get_av_drift(&avfm);
@@ -324,9 +326,16 @@ static void *start_encoder_mp2( void *ptr )
 
                 }
                 ptsfixup += (drifted_frames * video_interval_clk);
-            }
+            } else
+                ptsfixup = 0;
+
             coded_frame->pts += (ptsfixup * -1);
-                    
+
+            /* Testing shows 720p59.94 is 16ms ahead of where it should be. */
+            if (avfm_get_video_interval_clk(&avfm) == 450450) {
+                coded_frame->pts -=  (16LL * 27000LL);
+                coded_frame->pts -=  (67LL * 270LL);
+            }
             coded_frame->pts +=  ((int64_t)stream->audio_offset_ms * 27000LL);
             coded_frame->random_access = 1; /* Every frame output is a random access point */
             coded_frame->type = CF_AUDIO;
