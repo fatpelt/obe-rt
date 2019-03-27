@@ -279,6 +279,7 @@ typedef struct
     struct audio_pair_s audio_pairs[MAX_AUDIO_PAIRS];
 
     int isHalfDuplex;
+    BMDTimeValue vframe_duration;
 
 } decklink_ctx_t;
 
@@ -806,6 +807,8 @@ static int processAudio(decklink_ctx_t *decklink_ctx, decklink_opts_t *decklink_
                 avfm_set_pts_video(&raw_frame->avfm, videoPTS + clock_offset);
                 avfm_set_pts_audio(&raw_frame->avfm, packet_time + clock_offset);
                 avfm_set_hw_received_time(&raw_frame->avfm);
+                avfm_set_video_interval_clk(&raw_frame->avfm, decklink_ctx->vframe_duration);
+                raw_frame->avfm.hw_audio_correction_clk = clock_offset;
 
                 raw_frame->release_data = obe_release_audio_data;
                 raw_frame->release_frame = obe_release_frame;
@@ -846,6 +849,8 @@ static int processAudio(decklink_ctx_t *decklink_ctx, decklink_opts_t *decklink_
                 avfm_set_pts_video(&raw_frame->avfm, videoPTS + clock_offset);
                 avfm_set_pts_audio(&raw_frame->avfm, packet_time + clock_offset);
                 avfm_set_hw_received_time(&raw_frame->avfm);
+                avfm_set_video_interval_clk(&raw_frame->avfm, decklink_ctx->vframe_duration);
+                raw_frame->avfm.hw_audio_correction_clk = clock_offset;
                 //avfm_dump(&raw_frame->avfm);
 
                 raw_frame->release_data = obe_release_audio_data;
@@ -1138,16 +1143,17 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
         }
     }
 
+    BMDTimeValue vtime = 0;
+    if (videoframe) {
+       videoframe->GetStreamTime(&vtime, &decklink_ctx->vframe_duration, OBE_CLOCK);
+    }
+
     if (g_decklink_monitor_hw_clocks)
     {
         static BMDTimeValue last_vtime = 0;
         static BMDTimeValue last_atime = 0;
 
-        BMDTimeValue vtime = 0, vframe_duration = 0;
         BMDTimeValue atime = 0;
-        if (videoframe) {
-           videoframe->GetStreamTime(&vtime, &vframe_duration, OBE_CLOCK);
-        }
         if (audioframe) {
            audioframe->GetPacketTime(&atime, OBE_CLOCK);
         }
@@ -1162,7 +1168,7 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
             vtime - last_vtime,
             atime,
             atime - last_atime,
-            vframe_duration,
+            decklink_ctx->vframe_duration,
             atime - vtime);
 
         BMDTimeValue adiff = atime - last_atime;
@@ -1693,6 +1699,8 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
             avfm_set_pts_video(&raw_frame->avfm, decklink_ctx->stream_time + clock_offset);
             avfm_set_pts_audio(&raw_frame->avfm, packet_time + clock_offset);
             avfm_set_hw_received_time(&raw_frame->avfm);
+            avfm_set_video_interval_clk(&raw_frame->avfm, decklink_ctx->vframe_duration);
+            raw_frame->avfm.hw_audio_correction_clk = clock_offset;
             //avfm_dump(&raw_frame->avfm);
 
             if (g_decklink_inject_frame_enable)

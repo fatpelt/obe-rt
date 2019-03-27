@@ -301,28 +301,29 @@ static void *start_encoder_mp2( void *ptr )
 
                 /* Fixup the clock for 10.11.2, due to an audio clocking bug. */
                 int64_t drift = avfm_get_av_drift(&avfm);
-                int64_t drifted_frames = (drift / 900900);
+                int64_t video_interval_clk = avfm_get_video_interval_clk(&avfm);
+                int64_t drifted_frames = (drift / video_interval_clk);
 
-                ptsfixup = drift % 900900;
+                ptsfixup = drift % video_interval_clk;
 
                 if (drifted_frames == 0) {
                     if (ptsfixup < -181000) {
                         drifted_frames++;
                     } else
-                    if (ptsfixup > (900900 - 181000)) {
+                    if (ptsfixup > (video_interval_clk - 181000)) {
                         drifted_frames--;
                     }
                 } else {
                     if (drift > 0) {
                         drifted_frames = 0;
-                        if (ptsfixup > (900900 - 181000))
+                        if (ptsfixup > (video_interval_clk - 181000))
                             drifted_frames--;
                     } else {
                         drifted_frames *= -1;
                     }
 
                 }
-                ptsfixup += (drifted_frames * 900900);
+                ptsfixup += (drifted_frames * video_interval_clk);
             }
             coded_frame->pts += (ptsfixup * -1);
                     

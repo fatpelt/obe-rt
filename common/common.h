@@ -327,6 +327,8 @@ struct avfm_s {
     struct timeval hw_received_tv; /* Wall clock time the frame was received from the hardware. */
     int64_t av_drift; /* 27MHz - Calculation of audio_pts minus video_pts */
 
+    int64_t video_interval_clk; /* 27MHz. Time between two consecutive video frames. Eg 450450 for 60fps */
+
     /* Bit - desc.
      * ALL BITS DEFAULT TO ZERO during avfm_init(). Hardware core is expected to set accordingly. 
      *   0   Blackmagic specific. Is the port operating in Full (0) or Half duplex mode (1).
@@ -356,6 +358,14 @@ __inline__ void avfm_set_pts_video(struct avfm_s *s, int64_t pts) {
 __inline__ void avfm_set_pts_audio(struct avfm_s *s, int64_t pts) {
     s->audio_pts = pts;
     s->av_drift = s->audio_pts - s->video_pts;
+}
+
+__inline__ void avfm_set_video_interval_clk(struct avfm_s *s, int64_t clk) {
+    s->video_interval_clk = clk;
+}
+
+__inline__ int64_t avfm_get_video_interval_clk(struct avfm_s *s) {
+    return s->video_interval_clk;
 }
 
 __inline__ void avfm_set_pts_audio_corrected(struct avfm_s *s, int64_t pts) {
