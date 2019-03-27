@@ -591,7 +591,7 @@ public:
         }
 
         decklink_ctx_t *decklink_ctx = &decklink_opts_->decklink_ctx;
-        if (decklink_opts_->probe == 0) {
+        if (0 && decklink_opts_->probe == 0) {
             printf("%s() no format switching allowed outside of probe\n", __func__);
             syslog(LOG_WARNING, "%s() no format switching allowed outside of probe\n", __func__);
             decklink_ctx->last_frame_time = 1;
@@ -1125,7 +1125,7 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
         stride = videoframe->GetRowBytes();
     }
 
-    if (decklink_opts_->probe == 0 && decklink_ctx->enabled_mode_fmt) {
+    if (0 && decklink_opts_->probe == 0 && decklink_ctx->enabled_mode_fmt) {
         const struct obe_to_decklink_video *fmt = decklink_ctx->enabled_mode_fmt;
 
         int abortframe = 0;
@@ -2073,7 +2073,7 @@ static int open_card( decklink_opts_t *decklink_opts, int allowFormatDetection)
     const int   sample_rate = 48000;
     const char *model_name;
     BMDDisplayMode wanted_mode_id;
-    BMDDisplayMode start_mode_id = bmdModePAL;
+    BMDDisplayMode start_mode_id = bmdModeNTSC;
     IDeckLinkAttributes *decklink_attributes = NULL;
     uint32_t    flags = 0;
     bool        supported;
@@ -2376,9 +2376,22 @@ static int open_card( decklink_opts_t *decklink_opts, int allowFormatDetection)
     decklink_ctx->enabled_mode_id = wanted_mode_id;
     decklink_ctx->enabled_mode_fmt = getVideoFormatByMode(decklink_ctx->enabled_mode_id);
 
+#if 0
+// MMM
     result = decklink_ctx->p_input->EnableVideoInput(decklink_ctx->enabled_mode_id, bmdFormat10BitYUV, flags);
     printf("%s() startup. calling enable video with startup mode %s flags 0x%x\n", __func__,
         getModeName(decklink_ctx->enabled_mode_id), flags);
+#else
+    /* Probe for everything in PAL mode, unless the user wants to start in PAL mode, then
+     * configure HW for 1080P60 and let detection take care of things.
+     */
+    if (decklink_ctx->enabled_mode_id == start_mode_id) {
+        start_mode_id = bmdModeHD1080p6000;
+    }
+    printf("%s() startup. calling enable video with startup mode %s flags 0x%x\n", __func__, getModeName(start_mode_id), flags);
+    result = decklink_ctx->p_input->EnableVideoInput(start_mode_id, bmdFormat10BitYUV, flags);
+#endif
+
     if( result != S_OK )
     {
         fprintf( stderr, "[decklink] Failed to enable video input\n" );
@@ -2719,6 +2732,7 @@ static void *open_input( void *ptr )
     decklink_opts->video_conn = user_opts->video_connection;
     decklink_opts->audio_conn = user_opts->audio_connection;
     decklink_opts->video_format = user_opts->video_format;
+    //decklink_opts->video_format = INPUT_VIDEO_FORMAT_PAL;
     decklink_opts->enable_smpte2038 = user_opts->enable_smpte2038;
     decklink_opts->enable_scte35 = user_opts->enable_scte35;
     decklink_opts->enable_vanc_cache = user_opts->enable_vanc_cache;
@@ -2738,7 +2752,7 @@ static void *open_input( void *ptr )
 
     /* TODO: wait for encoder */
 
-    if (open_card(decklink_opts, 0) < 0)
+    if (open_card(decklink_opts, 1) < 0)
         return NULL;
 
     sleep( INT_MAX );
