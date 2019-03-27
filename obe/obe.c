@@ -850,6 +850,13 @@ int obe_populate_avc_encoder_params( obe_t *h, int input_stream_id, x264_param_t
         param->vui.i_transfer  = 6; // BT.601-6
         param->vui.i_colmatrix = 6; // BT.601-6
         param->i_keyint_max = param->i_fps_num / 1000;
+    } else if( ( param->i_fps_num == 30 || param->i_fps_num == 60 ) && param->i_fps_den == 1 )
+    {
+        param->vui.i_vidformat = 2; // NTSC
+        param->vui.i_colorprim = 6; // BT.601-6
+        param->vui.i_transfer  = 6; // BT.601-6
+        param->vui.i_colmatrix = 6; // BT.601-6
+        param->i_keyint_max = param->i_fps_num == 60 ? 59 : 29;
     }
     else
     {
