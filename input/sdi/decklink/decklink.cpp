@@ -1687,7 +1687,7 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived( IDeckLinkVideoInputFram
             audioframe->GetPacketTime(&packet_time, OBE_CLOCK);
 
             if (framesQueued++ == 0) {
-                clock_offset = (packet_time * -1);
+                //clock_offset = (packet_time * -1);
                 //printf(PREFIX "Clock offset established as %" PRIi64 "\n", clock_offset);
 
             }
