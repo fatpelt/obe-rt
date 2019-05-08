@@ -1,0 +1,6 @@
+Package: obe
+Version: 1.0BUILD
+Maintainer: Patrick Felt <patrick.felt@sling.com>
+Architecture: amd64
+Description: obe transcodes sdi into mpegts Commit: COMMIT
+Depends: libasound2,libfdk-aac1,libreadline7

@@ -1,0 +1,18 @@
+[Unit]
+Description=obe daemon running on %i
+After=network.target
+StartLimitInterval=300s
+StartLimitBurst=8
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/obe/%i.conf
+ExecStart=/usr/local/bin/obecli -c ${SCRIPT}
+PIDFile=/var/run/obe_%i.pid
+RestartSec=30s
+StandardOutput=null
+StandardInput=null
+User=administrator
+
+[Install]
+WantedBy=default.target

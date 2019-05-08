@@ -1,0 +1,31 @@
+set system lowlatency
+set input decklink
+set input opts card-idx=2
+probe input
+
+remove stream 2
+remove stream 2
+remove stream 2
+remove stream 2
+remove stream 2
+remove stream 2
+remove stream 2
+
+set stream opts 1:sdi-audio-pair=1
+
+set stream opts 0:threads=4,format=avc,level=41
+set stream opts 1:format=aac
+set muxer opts ts-muxrate=11770000,ts-type=dvb,cbr=0
+
+set stream opts 0:pid=512
+set stream opts 1:pid=4112
+set muxer opts ts-id=1,program-num=1,service-name=caseysucks,pmt-pid=256,pcr-pid=512
+
+set stream opts 0:lookahead=5,keyint=30,bframes=2
+
+set stream opts 0:vbv-maxrate=8196,vbv-bufsize=8196,bitrate=8196
+set stream opts 1:bitrate=384
+set outputs 1
+set output opts 0:target=udp://232.73.193.1:1234?ttl=7&miface=enp1s0f1,type=udp
+
+start
